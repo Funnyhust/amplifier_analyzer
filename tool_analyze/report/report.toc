@@ -1,0 +1,16 @@
+\contentsline {chapter}{DANH MỤC TỪ VIẾT TẮT}{iii}{chapter*.3}%
+\contentsline {chapter}{\numberline {1}MỞ ĐẦU}{1}{chapter.1}%
+\contentsline {section}{\numberline {1.1}Lý do chọn đề tài}{1}{section.1.1}%
+\contentsline {section}{\numberline {1.2}Mục tiêu nghiên cứu}{1}{section.1.2}%
+\contentsline {chapter}{\numberline {2}TỔNG QUAN VÀ KIẾN TRÚC HỆ THỐNG}{2}{chapter.2}%
+\contentsline {section}{\numberline {2.1}Kiến trúc tổng thể của hệ thống Analyzer}{2}{section.2.1}%
+\contentsline {section}{\numberline {2.2}Nghiên cứu hạ tầng ADC / DAC}{2}{section.2.2}%
+\contentsline {chapter}{\numberline {3}THIẾT KẾ PHẦN CỨNG MẠCH ĐO}{3}{chapter.3}%
+\contentsline {section}{\numberline {3.1}Lựa chọn linh kiện chủ chốt}{3}{section.3.1}%
+\contentsline {section}{\numberline {3.2}Cấu trúc sơ đồ nguyên lý phần cứng}{3}{section.3.2}%
+\contentsline {chapter}{\numberline {4}THIẾT KẾ PHẦN MỀM GIAO DIỆN (SOFTWARE \& DSP)}{4}{chapter.4}%
+\contentsline {section}{\numberline {4.1}Thiết kế Kiến trúc Giao diện UI/UX}{4}{section.4.1}%
+\contentsline {section}{\numberline {4.2}Xây dựng bộ DSP Core xử lý tín hiệu}{4}{section.4.2}%
+\contentsline {subsection}{\numberline {4.2.1}Thuật toán tính Hệ số khuếch đại (Gain Calculation)}{5}{subsection.4.2.1}%
+\contentsline {subsection}{\numberline {4.2.2}Thuật toán Tương quan chéo đo Phase (Cross-Correlation)}{5}{subsection.4.2.2}%
+\contentsline {chapter}{TÀI LIỆU THAM KHẢO}{5}{subsection.4.2.2}%

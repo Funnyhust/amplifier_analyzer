@@ -1,0 +1,227 @@
+\documentclass[12pt,a4paper]{report}
+
+% --- CẤU HÌNH PHÔNG CHỮ & NGÔN NGỮ ---
+\usepackage{fontspec}
+\setmainfont{Times New Roman} 
+
+% --- CÁC GÓI LỆNH CẦN THIẾT ---
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{geometry}
+\usepackage{tikz}
+
+% --- CẤU HÌNH TIÊU ĐỀ CHƯƠNG (Bỏ chữ Chapter, định dạng "1. TÊN CHƯƠNG") ---
+\usepackage{titlesec}
+\titleformat{\chapter}[hang]{\normalfont\LARGE\bfseries}{\thechapter.}{0.5em}{}
+\titlespacing*{\chapter}{0pt}{-10pt}{20pt}
+\setcounter{secnumdepth}{4} % Hiển thị số mục đến cấp 4 (Heading 4)
+
+% --- VIỆT HÓA CÁC TỪ KHÓA MẶC ĐỊNH ---
+\renewcommand{\contentsname}{MỤC LỤC}
+\renewcommand{\listfigurename}{DANH MỤC HÌNH VẼ (NẾU CẦN)}
+\renewcommand{\listtablename}{DANH MỤC BẢNG BIỂU (NẾU CẦN)}
+\renewcommand{\bibname}{TÀI LIỆU THAM KHẢO (VÍ DỤ)}
+\renewcommand{\figurename}{Hình}
+\renewcommand{\tablename}{Bảng}
+
+% Cấu hình lề trang theo chuẩn
+\geometry{left=3cm, right=2cm, top=2.5cm, bottom=2.5cm}
+
+\begin{document}
+
+% ==================== TRANG BÌA ====================
+\begin{titlepage}
+    \begin{tikzpicture}[remember picture, overlay]
+        \draw[line width=1.5pt] 
+            ([xshift=3cm,yshift=-2.5cm]current page.north west) 
+            rectangle 
+            ([xshift=-2cm,yshift=2.5cm]current page.south east);
+    \end{tikzpicture}
+
+    \begin{center}
+        \vspace*{0.5cm}
+        \large \textbf{ĐẠI HỌC BÁCH KHOA HÀ NỘI} \\
+        \large \textbf{TRƯỜNG ĐIỆN - ĐIỆN TỬ}
+        
+        \vspace{2.5cm}
+        \Huge \textbf{BÁO CÁO}
+        
+        \vspace{2cm}
+        \large \textbf{ĐỒ ÁN CHUYÊN NGÀNH II}
+        
+        \vspace{0.5cm}
+        \LARGE \textbf{MẠCH PHÂN TÍCH TÍN HIỆU KHUẾCH ĐẠI}
+        
+        \vspace{1.5cm}
+        \large \textbf{Nghiên cứu, thiết kế, và chế tạo} \\
+        \large \textbf{mạch phân tích tín hiệu khuếch đại}
+        
+        \vspace{2.5cm}
+        \begin{table}[h]
+            \centering
+            \large
+            \renewcommand{\arraystretch}{1.3}
+            \begin{tabular}{ll}
+                \textbf{Sinh viên thực hiện:} & Nguyễn Duy Anh – 20241652E \\
+                                             & Nguyễn Văn Dương – 20241713E \\[0.5cm]
+                \textbf{Người hướng dẫn:}     & TS. Đào Việt Hùng
+            \end{tabular}
+        \end{table}
+        
+        \vfill
+        \large Hà Nội, 3-2026
+        \vspace*{0.5cm}
+    \end{center}
+\end{titlepage}
+% ===================================================
+
+% --- MỤC LỤC & CÁC DANH MỤC ---
+\pagenumbering{roman}
+\tableofcontents
+\newpage
+
+\listoffigures
+\newpage
+
+\listoftables
+\newpage
+
+\chapter*{DANH MỤC TỪ VIẾT TẮT (NẾU CẦN)}
+\addcontentsline{toc}{chapter}{DANH MỤC TỪ VIẾT TẮT (NẾU CẦN)}
+\begin{table}[h]
+    \centering
+    \renewcommand{\arraystretch}{1.3}
+    \begin{tabular}{|p{3cm}|p{5cm}|p{5cm}|}
+        \hline
+        \textbf{Viết tắt} & \textbf{Dạng đầy đủ} & \textbf{Giải nghĩa} \\
+        \hline
+         &  &  \\ \hline
+         &  &  \\ \hline
+         &  &  \\ \hline
+         &  &  \\ \hline
+         &  &  \\ \hline
+         &  &  \\ \hline
+    \end{tabular}
+\end{table}
+\newpage
+
+% --- NỘI DUNG CHÍNH ---
+\pagenumbering{arabic}
+
+\chapter{MỞ ĐẦU}
+Phần này có thể viết theo nhiều cách, tùy theo tác giả, nhưng thường bao gồm một số hoặc toàn bộ các phần như dưới đây:
+\begin{itemize}
+    \item Giới thiệu tổng quan về lĩnh vực nghiên cứu
+    \item Lí do chọn đề tài, ý nghĩa của đề tài hay việc thực hiện đề tài này
+    \item Mục tiêu đặt ra của công việc được trình bày trong báo cáo
+    \item Tóm tắt bố cục của báo cáo
+\end{itemize}
+
+\chapter{NỘI DUNG CHÍNH A}
+Nội dung chính tuy phụ thuộc từng đề tài nhưng phải có phần khảo sát tính hình nghiên cứu liên quan. Các nghiên cứu liên quan có thể là:
+\begin{itemize}
+    \item Những bài báo có mục tiêu nghiên cứu trùng hoặc gần trùng với bài toán đích của báo cáo này, kèm trích dẫn theo mẫu sau \cite{1}
+    \item Những bài báo có quan hệ mật thiết với bài toán hoặc lĩnh vực nghiên cứu của báo cáo này, kèm trích dẫn \cite{2}
+    \item Những bài báo \cite{1, 3, 4, 5}, sách \cite{6, 7, 8}, sáng chế \cite{9, 10}, v.v. là nền tảng cho nghiên cứu hoặc cung cấp cơ sở quan trọng cho các nội dung nghiên cứu
+    \item Những tài liệu liên quan khác
+\end{itemize}
+
+\chapter{NỘI DUNG CHÍNH B, C, … Y}
+Nghiên cứu, đề xuất, thiết kế, chế tạo, v.v. từ tổng quan đến chi tiết.
+
+\chapter{CÁC ĐỊNH DẠNG MẪU (HEADING 1)}
+\section{Nội dung con 1 (Heading 2)}
+\subsection{Nội dung cháu 1 (Heading 3)} \label{subsec:chau}
+\subsubsection{Nội dung chắt 1 (Heading 4)}
+
+Ví dụ về cross-reference đối với Figure (hình) là Hình \ref{fig:mau}, với Table (bảng) là Bảng \ref{tab:mau}, và với chương mục là Mục \ref{subsec:chau}. Sinh viên cần xóa bỏ Mục 4 này và các mục không cần thiết sau khi hoàn thành toàn bộ báo cáo.
+
+\begin{figure}[h]
+    \centering
+    % ĐÃ TẠM ẨN ẢNH ĐỂ TRÁNH LỖI BIÊN DỊCH. 
+    % Xóa dấu % ở dòng dưới và thay tên 'battery_image.jpg' bằng file ảnh của bạn.
+    % \includegraphics[width=0.7\textwidth]{battery_image.jpg} 
+    \caption{Mẫu chú thích hình}
+    \label{fig:mau}
+\end{figure}
+
+Text text text text text text text text text text text text text text text text text text text text text text text text text text text text text text text text.
+
+\begin{itemize}
+    \item Bullet level 1
+    \item Bullet level 1
+    \begin{itemize}
+        \item Bullet level 2
+        \item Bullet level 2
+    \end{itemize}
+\end{itemize}
+
+\begin{table}[h]
+    \centering
+    \caption{Mẫu chú thích bảng}
+    \label{tab:mau}
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabular}{|c|l|l|}
+        \hline
+        \textbf{STT} & \textbf{Các mục} & \textbf{Kiểu chữ} \\
+        \hline
+        1 & Dòng header của bảng & Chữ đậm \\
+        \hline
+        2 & Các dòng khác của bảng & Chữ thường \\
+        \hline
+    \end{tabular}
+\end{table}
+
+Text text text text text text text text text text text text text text text text text text text text text text text text text text text text text text text text.
+
+\chapter{KIỂM NGHIỆM NGHIÊN CỨU}
+Tùy đặc thù của đề tài và công việc đã làm, phần này trình bày cấu hình hệ thống đã được dùng để kiểm nghiệm các nội dung khoa học đã thực hiện. Việc kiểm nghiệm có thể là:
+\begin{itemize}
+    \item Mô phỏng bằng các phần mềm
+    \item Thực nghiệm với mạch điện, thiết bị thật
+    \item Hoặc cả hai công cụ trên
+\end{itemize}
+
+\chapter{KẾT QUẢ VÀ THẢO LUẬN}
+Phần này trình bày:
+\begin{itemize}
+    \item Các kết quả định lượng (tương ứng với các kiểm nghiệm) dưới dạng: con số, bảng biểu, đồ thị, hình ảnh, v.v.
+    \item Những phân tích khách quan về kết quả: tuyến tính/phi tuyến, tính tương quan, sự phụ thuộc, giá trị trung bình, độ lệch chuẩn, sai số, biểu đồ, đồ thị, v.v. tùy theo khả năng của người viết
+\end{itemize}
+
+Thảo luận khách quan về:
+\begin{itemize}
+    \item Những ưu/nhược điểm của nghiên cứu đã tiến hành và tính cũ/mới của kết quả đã đạt được
+    \item Mức độ hợp lý hay phi lý của giả định hay tiên đề mà nghiên cứu đã sử dụng và ảnh hưởng. VD: giả định hệ thống đo góc nghiêng bằng gia tốc kế luôn đứng yên trong khi thực tế có rung động
+    \item Giới hạn của các công thức, mạch điện, phần mềm, v.v. mà nghiên cứu còn đúng hoặc còn áp dụng được
+    \item Các thảo luận khác
+\end{itemize}
+
+Có thể đưa ra một số nhận định chủ quan về nguyên nhân của một số kết quả chưa tốt, dự đoán về mức độ cải thiện nếu một yếu tố nào đó tốt hơn, đánh giá tiềm năng của nghiên cứu, v.v.
+
+\chapter{KẾT LUẬN VÀ HƯỚNG PHÁT TRIỂN}
+\begin{itemize}
+    \item Kết luận chung và đánh giá kết quả đạt được, dài tối thiểu ½ trang.
+    \item Tùy đặc thù của bài viết và chủ đề, nội dung có thể là tóm tắt: các công việc đã thực hiện, các kết quả đã đạt được, đánh giá kết quả căn cứ vào mục tiêu đã đặt ra, các vấn đề còn tồn tại, hướng giải quyết trong tương lai, ý nghĩa khoa học và thực tế của nghiên cứu, v.v.
+\end{itemize}
+
+% --- TÀI LIỆU THAM KHẢO ---
+\addcontentsline{toc}{chapter}{TÀI LIỆU THAM KHẢO (VÍ DỤ)}
+\begin{thebibliography}{99}
+    \bibitem{1} M. A. Sarvghadi and T.-C. Wan, ``Overview of time synchronization protocols in wireless sensor networks,'' 2014 2nd Int. Conf. Electron. Des., pp. 204–209, 2014.
+    \bibitem{2} S. M. Lasassmeh and J. M. Conrad, ``Time synchronization in wireless sensor networks: A survey,'' Proc. IEEE SoutheastCon 2010, pp. 242–245, 2010.
+    \bibitem{3} and D. E. N. Bulusu, J. Heidemann, ``GPS-less low cost outdoor localization for very small devices. IEEE Personal Communications, 7(5),'' IEEE Pers. Commun. Mag., vol. 7, no. 5, pp. 28–34, 2000.
+    \bibitem{4} Q. Li and D. Rus, ``Global clock synchronization in sensor networks,'' IEEE Trans. Comput., vol. 55, no. 2, pp. 214–226, 2006.
+    \bibitem{5} D. Djenouri and M. Bagaa, ``Synchronization Protocols and Implementation Issues in Wireless Sensor Networks: A Review,'' IEEE Syst. J., pp. 1–11, 2014.
+    \bibitem{6} M. Alnuaimi, K. Shuaib, K. Alnuaimi, and M. Abdel-Hafez, ``Data Gathering in Delay Tolerant Wireless Sensor Networks Using a Ferry,'' Sensors, vol. 15, no. 10, pp. 25809–25830, 2015.
+    \bibitem{7} R. I. Tandel, ``Leach Protocol in Wireless Sensor Network: A Survey,'' vol. 7, no. 4, pp. 1894–1896, 2016.
+    \bibitem{8} ``Effective Survey on Hierarchical Routing Protocols in WSN,'' no. August, pp. 0–4, 2015.
+    \bibitem{9} Tên tác giả sáng chế 1, ``Tên sáng chế 1,'' Mã số sáng chế, Năm.
+    \bibitem{10} Tên tác giả sáng chế 2, ``Tên sáng chế 2,'' Mã số sáng chế, Năm.
+\end{thebibliography}
+
+\end{document}

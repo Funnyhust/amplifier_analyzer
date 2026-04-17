@@ -1,0 +1,29 @@
+# BÁO CÁO TIẾN ĐỘ - GIAI ĐOẠN 1 (HARDWARE)
+
+**Hạng mục:** Nghiên cứu & Thiết kế Kiến trúc mạch Analog Front-End (Chốt phương án cuối)
+
+*Đánh giá chung: Kiến trúc phần cứng đã được tối ưu triệt để. Tận dụng 100% tài nguyên phân giải của ADC/DAC nội bộ trên vi điều khiển STM32F407, kết hợp cùng cụm mạch Analog Front-End (AFE) thiết kế ngoài theo tiêu chuẩn học thuật đồ án kỹ thuật.*
+
+### Các công việc ĐÃ HOÀN THÀNH (Thiết kế Lý thuyết):
+
+- [X] **Cập nhật Khối Thu (RX - Data Acquisition) - Auto-Ranging & Level Shifter:**
+  - **Mạch đo phân độ linh hoạt:** Triển khai cụm mạng trở kết hợp IC Analog Switch (vd: CD4051). Cấu trúc Auto-Ranging (tự động lấy thang đo) sẵn sàng đón nhận và Scale tỉ lệ mọi loại biên độ đầu vào từ $\pm10V$ cho đến cỡ milliVolt.
+  - **Dịch mức điện thế tuyến tính (DC Bias):** Sử dụng Op-Amp dịch mức điện áp xoay chiều lên một dải Offset +1.65V DC. Đảm bảo dao động nằm tuyệt đối gọn gàng trong phổ tuyến tính định mức 0.3V - 3.0V để vắt kiệt tối đa bậc phân giải 12-bit.
+  - **Bảo vệ ngõ vào (Input Protection):** Cấu trúc Diode kẹp áp (Clamping diode) giúp bảo vệ an toàn cho chân nhận ADC của vi điều khiển.
+
+- [X] **Tối ưu Cấu hình ADC Nội bộ vi điều khiển STM32:**
+  - Khai thác cụm 3 lõi lấy mẫu đan xen **Triple Interleaved ADC 12-bit** trên con **STM32F407VET6**. 
+  - Tốc độ ép nhận mẫu lên tới **7.2 MSPS**, vượt cực kì xa mức đòi hỏi của định lý Nyquist ở tần số 500kHz.
+
+- [X] **Chốt Phương án Khối Phát (TX - Stimulus Output):**
+  - **Dùng DAC 12-bit nội bộ:** Tập trung dùng trọn vẹn DAC nội, gạt bỏ 100% các dòng chip tạo dao động ngoài rời rạc. VĐK sẽ tự sinh xung thông qua hệ thống DMA cực kì ổn định để xuất mức áp 0 - 3.3V ra khỏi chân Chip.
+  - **Mạch khôi phục sóng (Reconstruction Filter):** Thiết lập một dạng bộ lọc thông thấp (Low-pass Filter) phía sau DAC để khử hiện tượng răng cưa Aliasing của 4096 bậc thang số, biến nó thành đường biểu diễn sóng Sine liền mạch.
+  - **Op-Amp Buffer (Mạch đệm và khuếch đại):** Trừ đi điện áp nền 1.65V để sóng có cả phần âm (Xoay chiều) sau đó khuếch đại lên đúng khẩu độ $\pm5V$ cấp cho DUT.
+
+### Các công việc CÒN LẠI (Sắp tới):
+
+- [ ] **Hoàn thiện bản vẽ Schematic tổng:** 
+  - Vẽ chi tiết mảng Thu Analog Input (Auto-Ranging, Cầu phân áp, Diode kẹp).
+  - Vẽ đường ra cho mảng Phát DAC (Reconstruction Filter + Op-Amp trừ áp 1.65V).
+- [ ] **Tiến hành Layout & Gia công PCB:** Phân bổ chống nhiễu tách Ground kĩ thuật số và Ground Analog triệt để bằng kỹ năng rải Copper Pour tĩnh.
+- [ ] **Kiểm thử tín hiệu Hardware:** Test độc lập khối Analog bằng máy tính ngoài để nghiệm thu xem việc cộng Offset có thực sự chặn áp đúng giới hạn 3.3V không. Lên kế hoạch tích hợp luồng code STM32.
