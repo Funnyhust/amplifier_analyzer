@@ -1,0 +1,99 @@
+# generated: 2026-04-20T00:42:45+07:00
+# last_updated: 2026-04-20T00:53:00+07:00
+# project: Aplifier_Analyze
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: _bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: "2026-04-20T00:42:45+07:00"
+last_updated: "2026-04-20T00:53:00+07:00"
+project: Aplifier_Analyze
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+
+development_status:
+  # ─────────────────────────────────────────────────────
+  # Epic 1: Foundation Scaffold — Project Setup & Simulation Mode
+  # ─────────────────────────────────────────────────────
+  epic-1: in-progress
+  1-1-desktop-project-scaffold: done
+  1-2-main-window-and-panel-stubs: in-progress
+  1-3-simulation-mode-waveform-generator: backlog
+  epic-1-retrospective: optional
+
+  # ─────────────────────────────────────────────────────
+  # Epic 2: Binary Protocol & Desktop Data Pipeline
+  # ─────────────────────────────────────────────────────
+  epic-2: backlog
+  2-1-frameparser-state-machine: backlog
+  2-2-firmware-usb-tx-service: backlog
+  2-3-oscilloscope-waveform-display: backlog
+  2-4-firmware-state-machine-and-command-parser: backlog
+  epic-2-retrospective: optional
+
+  # ─────────────────────────────────────────────────────
+  # Epic 3: Firmware Core — ADC Acquisition & DAC Signal Generation
+  # ─────────────────────────────────────────────────────
+  epic-3: backlog
+  3-1-dac-sine-wave-generator: backlog
+  3-2-bode-sweep-scheduler: backlog
+  3-3-adc-dual-interleaved-dma-ping-pong: backlog
+  3-4-auto-range-control: backlog
+  epic-3-retrospective: optional
+
+  # ─────────────────────────────────────────────────────
+  # Epic 4: Bode Plot & DSP
+  # ─────────────────────────────────────────────────────
+  epic-4: backlog
+  4-1-dsp-core-functions: backlog
+  4-2-bode-panel-visualization: backlog
+  4-3-calibration-corrected-gain-display: backlog
+  epic-4-retrospective: optional
+
+  # ─────────────────────────────────────────────────────
+  # Epic 5: Integration, Trigger & Calibration
+  # ─────────────────────────────────────────────────────
+  epic-5: backlog
+  5-1-firmware-trigger-and-osc-capture-mode: backlog
+  5-2-calibration-workflow: backlog
+  5-3-end-to-end-integration-test: backlog
+  epic-5-retrospective: optional
+
+  # ─────────────────────────────────────────────────────
+  # Epic 6: Export & Polish
+  # ─────────────────────────────────────────────────────
+  epic-6: backlog
+  6-1-csv-data-export: backlog
+  6-2-logging-config-and-pyinstaller-packaging: backlog
+  6-3-ui-polish-and-status-bar: backlog
+  epic-6-retrospective: optional
