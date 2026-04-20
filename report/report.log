@@ -1,4 +1,4 @@
-This is XeTeX, Version 3.141592653-2.6-0.999995 (MiKTeX 24.1) (preloaded format=xelatex 2026.1.9)  6 APR 2026 02:33
+This is XeTeX, Version 3.141592653-2.6-0.999995 (MiKTeX 24.1) (preloaded format=xelatex 2026.1.9)  21 APR 2026 00:32
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -915,24 +915,32 @@ Chapter 2.
 
 ]
 Chapter 3.
+
+Overfull \hbox (21.05632pt too wide) in paragraph at lines 145--159
+ [][] 
+ []
+
 [3
 
-]
+] [4]
 Chapter 4.
 File: images/app_desktop1.png Graphic file (type bmp)
 <images/app_desktop1.png>
 File: images/app_desktop2.png Graphic file (type bmp)
 <images/app_desktop2.png>
-[4
+[5
 
-] [5]
-Underfull \hbox (badness 10000) in paragraph at lines 187--188
+] [6]
+LaTeX Font Info:    Font shape `TU/lmtt/bx/n' in size <12> not available
+(Font)              Font shape `TU/lmtt/b/n' tried instead on input line 238.
+ [7] [8]
+Underfull \hbox (badness 10000) in paragraph at lines 260--261
 []\TU/TimesNewRoman(0)/m/n/12 Scipy Contributors, \TU/TimesNewRoman(0)/m/it/12 
 SciPy Documentation v1.11\TU/TimesNewRoman(0)/m/n/12 , 2023. [Online]. Availabl
 e:
  []
 
-[6
+[9
 
 ] (report.aux)
  ***********
@@ -940,15 +948,15 @@ LaTeX2e <2023-11-01> patch level 1
 L3 programming layer <2024-01-04>
  ***********
 Package rerunfilecheck Info: File `report.out' has not changed.
-(rerunfilecheck)             Checksum: D81C496E15F0307E9483F81A0A6C93AF;3798.
+(rerunfilecheck)             Checksum: FB6B1C0A3CA9FD1BE6535BE9E0DA35D5;5237.
  ) 
 Here is how much of TeX's memory you used:
- 23124 strings out of 409617
- 464280 string characters out of 5773202
- 1927191 words of memory out of 5000000
- 44867 multiletter control sequences out of 15000+600000
- 565889 words of font info for 93 fonts, out of 8000000 for 9000
+ 23138 strings out of 409617
+ 464515 string characters out of 5773202
+ 1936191 words of memory out of 5000000
+ 44877 multiletter control sequences out of 15000+600000
+ 565905 words of font info for 95 fonts, out of 8000000 for 9000
  1348 hyphenation exceptions out of 8191
- 84i,10n,93p,719b,387s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 84i,10n,93p,719b,401s stack positions out of 10000i,1000n,20000p,200000b,200000s
 
-Output written on report.pdf (10 pages).
+Output written on report.pdf (13 pages).

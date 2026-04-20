@@ -1,8 +1,8 @@
 # Tài liệu Phần cứng — Aplifier_Analyze
 
-**Dự án:** Signal Analyzer & Oscilloscope dựa trên STM32F407VET6  
-**Tác giả:** Truong pc  
-**Cập nhật:** 2026-04-18  
+**Dự án:** Signal Analyzer & Oscilloscope dựa trên STM32F407VET6
+**Tác giả:** Truong pc
+**Cập nhật:** 2026-04-18
 **Trạng thái:** Thiết kế kiến trúc hoàn chỉnh — sẵn sàng đưa vào schematic
 
 ---
@@ -15,7 +15,7 @@
 4. [Chuỗi tín hiệu TX (phát)](#4-chuỗi-tín-hiệu-tx-phát)
 5. [Chuỗi tín hiệu RX (thu)](#5-chuỗi-tín-hiệu-rx-thu)
 6. [Cây xung nhịp (Clock Tree)](#6-cây-xung-nhịp-clock-tree)
-7. [Thiết kế nguồn & PCB](#7-thiết-kế-nguồn--pcb)
+7. [Thiết kế nguồn &amp; PCB](#7-thiết-kế-nguồn--pcb)
 8. [Hướng dẫn Schematic](#8-hướng-dẫn-schematic)
 9. [Thông số hiệu năng thực tế](#9-thông-số-hiệu-năng-thực-tế)
 10. [Danh sách rủi ro phần cứng](#10-danh-sách-rủi-ro-phần-cứng)
@@ -41,6 +41,7 @@ Aplifier_Analyze là **Network Analyzer** kiểu kích thích-đo đạc (stimul
 ```
 
 **Nguyên tắc thiết kế:**
+
 - ❌ Không dùng IC ngoài trong đường tín hiệu chính (không AD9833, không AD8307)
 - ✅ Chỉ dùng DAC/ADC nội bộ STM32 + mạch điện thuần (R, C, Op-Amp, Analog Switch)
 - ✅ Thiết kế đơn giản, dễ debug, dễ thay linh kiện
@@ -51,89 +52,90 @@ Aplifier_Analyze là **Network Analyzer** kiểu kích thích-đo đạc (stimul
 
 ### 2.1 Vi điều khiển chính
 
-| Ref | Linh kiện | Package | Thông số | Ghi chú |
-|-----|-----------|---------|----------|---------|
-| U1 | **STM32F407VET6** | LQFP-100 | ARM Cortex-M4 @ 168 MHz, 12-bit ADC×3, 12-bit DAC×2, USB OTG FS | MCU chính |
+| Ref | Linh kiện              | Package  | Thông số                                                        | Ghi chú   |
+| --- | ----------------------- | -------- | ----------------------------------------------------------------- | ---------- |
+| U1  | **STM32F407VET6** | LQFP-100 | ARM Cortex-M4 @ 168 MHz, 12-bit ADC×3, 12-bit DAC×2, USB OTG FS | MCU chính |
 
 ### 2.2 Mạch AFE TX — Bộ lọc tái tạo (Reconstruction Filter)
 
-| Ref | Linh kiện | Giá trị | Package | Ghi chú |
-|-----|-----------|---------|---------|---------|
-| U2 | **Op-Amp RRIO** | — | SOT-23-5 | Buffer sau DAC; khuyến nghị: **TLV9001** (TI) hoặc **LMV321** (TI) |
-| R1 | Điện trở | **82 Ω** | 0402 | Sallen-Key R1 (fc=200 kHz, C=10nF) |
-| R2 | Điện trở | **82 Ω** | 0402 | Sallen-Key R2 |
-| C1 | Tụ gốm C0G | **10 nF** | 0402 | Sallen-Key C1 — bắt buộc C0G/NP0 (ổn định nhiệt) |
-| C2 | Tụ gốm C0G | **10 nF** | 0402 | Sallen-Key C2 — bắt buộc C0G/NP0 |
+| Ref | Linh kiện            | Giá trị       | Package  | Ghi chú                                                                         |
+| --- | --------------------- | --------------- | -------- | -------------------------------------------------------------------------------- |
+| U2  | **Op-Amp RRIO** | —              | SOT-23-5 | Buffer sau DAC; khuyến nghị:**TLV9001** (TI) hoặc **LMV321** (TI) |
+| R1  | Điện trở           | **82 Ω** | 0402     | Sallen-Key R1 (fc=200 kHz, C=10nF)                                               |
+| R2  | Điện trở           | **82 Ω** | 0402     | Sallen-Key R2                                                                    |
+| C1  | Tụ gốm C0G          | **10 nF** | 0402     | Sallen-Key C1 — bắt buộc C0G/NP0 (ổn định nhiệt)                          |
+| C2  | Tụ gốm C0G          | **10 nF** | 0402     | Sallen-Key C2 — bắt buộc C0G/NP0                                              |
 
-> **Tính toán Sallen-Key Butterworth 2nd-order (Q=0.707):**  
-> fc = 1 / (2π × R × C) = 1 / (2π × 82 × 10n) ≈ **194 kHz** ≈ 200 kHz  
+> **Tính toán Sallen-Key Butterworth 2nd-order (Q=0.707):**
+> fc = 1 / (2π × R × C) = 1 / (2π × 82 × 10n) ≈ **194 kHz** ≈ 200 kHz
 > Chọn R=82 Ω (gần nhất với 79.6 Ω lý thuyết), C=10nF C0G
 
 ### 2.3 Mạch AFE RX — Bảo vệ ngõ vào
 
-| Ref | Linh kiện | Giá trị | Package | Ghi chú |
-|-----|-----------|---------|---------|---------|
-| R_in | Điện trở | **1 kΩ** | 0402 | Giới hạn dòng khi overvoltage |
-| D1, D2 | Schottky diode | **BAT54** | SOT-23 | Clamp to GND và 3.3V; tốc độ cao, Vf thấp |
+| Ref    | Linh kiện     | Giá trị       | Package | Ghi chú                                       |
+| ------ | -------------- | --------------- | ------- | ---------------------------------------------- |
+| R_in   | Điện trở    | **1 kΩ** | 0402    | Giới hạn dòng khi overvoltage               |
+| D1, D2 | Schottky diode | **BAT54** | SOT-23  | Clamp to GND và 3.3V; tốc độ cao, Vf thấp |
 
 ### 2.4 Mạch AFE RX — Auto-Range Analog Switch
 
-| Ref | Linh kiện | Package | Thông số | Ghi chú |
-|-----|-----------|---------|----------|---------|
-| U3 | **TMUX1072** (TI) | SOT-23-8 | SPDT×2, Ron≈5Ω, BW≥200MHz, OVP built-in, 1.8–5.5V | **Khuyến nghị #1** |
-| — | TS5A3153 (TI) | SOT-23-6 | SPDT×1, Ron≈1Ω, BW≥100MHz, 1.8–5.5V | Thay thế nếu không có TMUX1072 |
+| Ref | Linh kiện              | Package  | Thông số                                             | Ghi chú                           |
+| --- | ----------------------- | -------- | ------------------------------------------------------ | ---------------------------------- |
+| U3  | **TMUX1072** (TI) | SOT-23-8 | SPDT×2, Ron≈5Ω, BW≥200MHz, OVP built-in, 1.8–5.5V | **Khuyến nghị #1**         |
+| —  | TS5A3153 (TI)           | SOT-23-6 | SPDT×1, Ron≈1Ω, BW≥100MHz, 1.8–5.5V               | Thay thế nếu không có TMUX1072 |
 
 **Mạng phân áp (Attenuator network):**
 
-| Ref | Linh kiện | Giá trị | Ghi chú |
-|-----|-----------|---------|---------|
-| R_div1 | Điện trở | **90 kΩ** (hoặc 9×10 kΩ) | Phân áp ÷10 (trên) |
-| R_div2 | Điện trở | **10 kΩ** | Phân áp ÷10 (dưới) |
-| R_div3 | Điện trở | **990 kΩ** | Phân áp ÷100 (trên) |
-| R_div4 | Điện trở | **10 kΩ** | Phân áp ÷100 (dưới) |
-| R_term | Điện trở | **1 MΩ** | Termination ngõ vào |
+| Ref    | Linh kiện  | Giá trị                          | Ghi chú                 |
+| ------ | ----------- | ---------------------------------- | ------------------------ |
+| R_div1 | Điện trở | **90 kΩ** (hoặc 9×10 kΩ) | Phân áp ÷10 (trên)   |
+| R_div2 | Điện trở | **10 kΩ**                   | Phân áp ÷10 (dưới)  |
+| R_div3 | Điện trở | **990 kΩ**                  | Phân áp ÷100 (trên)  |
+| R_div4 | Điện trở | **10 kΩ**                   | Phân áp ÷100 (dưới) |
+| R_term | Điện trở | **1 MΩ**                    | Termination ngõ vào    |
 
 > **3 dải đo:**
+>
 > - Range x1: input thẳng → dải ±1.65V (ADC full scale)
 > - Range ÷10: R_div1/R_div2 → dải ±16.5V
 > - Range ÷100: R_div3/R_div4 → dải ±165V
 
 ### 2.5 Mạch AFE RX — DC Bias +1.65V
 
-| Ref | Linh kiện | Giá trị | Package | Ghi chú |
-|-----|-----------|---------|---------|---------|
-| U4 | **Op-Amp RRIO** | — | SOT-23-5 | Buffer Vbias 1.65V; **LMV321** hoặc **MCP6001** hoặc **TLV9001** |
-| R_top | Điện trở | **10 kΩ** | 0402 | Voltage divider 3.3V → 1.65V |
-| R_bot | Điện trở | **10 kΩ** | 0402 | Voltage divider 3.3V → 1.65V |
-| R_sumA | Điện trở | **10 kΩ** | 0402 | Summing amp input (Vin_attenuated) |
-| R_sumB | Điện trở | **10 kΩ** | 0402 | Summing amp input (Vbias) |
-| C_bias | Tụ gốm | **100 nF** | 0402 | Bypass tại nút Vbias |
+| Ref    | Linh kiện            | Giá trị        | Package  | Ghi chú                                                                            |
+| ------ | --------------------- | ---------------- | -------- | ----------------------------------------------------------------------------------- |
+| U4     | **Op-Amp RRIO** | —               | SOT-23-5 | Buffer Vbias 1.65V;**LMV321** hoặc **MCP6001** hoặc **TLV9001** |
+| R_top  | Điện trở           | **10 kΩ** | 0402     | Voltage divider 3.3V → 1.65V                                                       |
+| R_bot  | Điện trở           | **10 kΩ** | 0402     | Voltage divider 3.3V → 1.65V                                                       |
+| R_sumA | Điện trở           | **10 kΩ** | 0402     | Summing amp input (Vin_attenuated)                                                  |
+| R_sumB | Điện trở           | **10 kΩ** | 0402     | Summing amp input (Vbias)                                                           |
+| C_bias | Tụ gốm              | **100 nF** | 0402     | Bypass tại nút Vbias                                                              |
 
 ### 2.6 Mạch AFE RX — Anti-aliasing Filter
 
-| Ref | Linh kiện | Giá trị | Package | Ghi chú |
-|-----|-----------|---------|---------|---------|
-| R_aa | Điện trở | **100 Ω** | 0402 | RC filter ngõ vào ADC |
-| C_aa | Tụ gốm C0G | **10 nF** | 0402 | fc = 1/(2π×100×10n) ≈ **159 kHz** |
+| Ref  | Linh kiện   | Giá trị        | Package | Ghi chú                                   |
+| ---- | ------------ | ---------------- | ------- | ------------------------------------------ |
+| R_aa | Điện trở  | **100 Ω** | 0402    | RC filter ngõ vào ADC                    |
+| C_aa | Tụ gốm C0G | **10 nF**  | 0402    | fc = 1/(2π×100×10n) ≈**159 kHz** |
 
 ### 2.7 Nguồn VDDA — Lọc nhiễu ADC
 
-| Ref | Linh kiện | Giá trị | Package | Ghi chú |
-|-----|-----------|---------|---------|---------|
-| FB1 | Ferrite bead | **600 Ω @ 100 MHz**, DCR <0.5 Ω, Imax ≥ 200 mA | 0402 | Chặn USB noise vào VDDA |
-| C_vdda1 | Tụ gốm C0G | **1 µF** | 0402 | Bulk bypass VDDA |
-| C_vdda2 | Tụ gốm | **100 nF** | 0402 | HF bypass VDDA |
-| U_ldo | LDO ultra-low noise | — | SOT-23-5 | Tùy chọn: **LT3042** hoặc **TPS7A02** — tách hoàn toàn VDDA khỏi VDDD |
+| Ref     | Linh kiện          | Giá trị                                               | Package  | Ghi chú                                                                                 |
+| ------- | ------------------- | ------------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------- |
+| FB1     | Ferrite bead        | **600 Ω @ 100 MHz**, DCR <0.5 Ω, Imax ≥ 200 mA | 0402     | Chặn USB noise vào VDDA                                                                |
+| C_vdda1 | Tụ gốm C0G        | **1 µF**                                         | 0402     | Bulk bypass VDDA                                                                         |
+| C_vdda2 | Tụ gốm            | **100 nF**                                        | 0402     | HF bypass VDDA                                                                           |
+| U_ldo   | LDO ultra-low noise | —                                                      | SOT-23-5 | Tùy chọn:**LT3042** hoặc **TPS7A02** — tách hoàn toàn VDDA khỏi VDDD |
 
 ### 2.8 Thạch anh & Kết nối
 
-| Ref | Linh kiện | Giá trị | Package | Ghi chú |
-|-----|-----------|---------|---------|---------|
-| Y1 | Crystal HSE | **8 MHz** | HC-49 / SMD | PLL source cho STM32 |
-| C_hse1, C_hse2 | Tụ gốm | **20 pF** | 0402 | Load capacitors HSE |
-| J1 | USB Type-B Micro / Type-C | — | Through-hole / SMD | USB OTG FS kết nối PC |
-| J2, J3 | BNC connector | — | Through-hole | CH_in và CH_out input/output |
-| J4 | SWD header | 5-pin | 2.54mm | Debug/flash (SWDIO, SWDCLK, GND, VCC, NRST) |
+| Ref            | Linh kiện                | Giá trị       | Package            | Ghi chú                                    |
+| -------------- | ------------------------- | --------------- | ------------------ | ------------------------------------------- |
+| Y1             | Crystal HSE               | **8 MHz** | HC-49 / SMD        | PLL source cho STM32                        |
+| C_hse1, C_hse2 | Tụ gốm                  | **20 pF** | 0402               | Load capacitors HSE                         |
+| J1             | USB Type-B Micro / Type-C | —              | Through-hole / SMD | USB OTG FS kết nối PC                     |
+| J2, J3         | BNC connector             | —              | Through-hole       | CH_in và CH_out input/output               |
+| J4             | SWD header                | 5-pin           | 2.54mm             | Debug/flash (SWDIO, SWDCLK, GND, VCC, NRST) |
 
 ---
 
@@ -180,20 +182,20 @@ Aplifier_Analyze là **Network Analyzer** kiểu kích thích-đo đạc (stimul
 
 ### 3.2 Phân bổ GPIO / Pin mapping (đề xuất)
 
-| STM32 Pin | Chức năng | Peripheral | Ghi chú |
-|-----------|-----------|------------|---------|
-| PA0 | ADC1_IN0 | ADC1 (CH_in) | Dual Interleaved với ADC2 |
-| PA1 | ADC2_IN1 | ADC2 (CH_out) | Dual Interleaved với ADC1 |
-| PA4 | DAC1_OUT | DAC Channel 1 | TX sine wave |
-| PA5 | DAC2_OUT | DAC Channel 2 | Dự phòng / reference |
-| PB0 | GPIO Output | TMUX1072 SEL0 | Auto-range bit 0 |
-| PB1 | GPIO Output | TMUX1072 SEL1 | Auto-range bit 1 |
-| PA11 | USB_FS_DM | USB OTG FS | D- |
-| PA12 | USB_FS_DP | USB OTG FS | D+ |
-| PH0 | OSC_IN | HSE 8 MHz | Crystal |
-| PH1 | OSC_OUT | HSE 8 MHz | Crystal |
-| PA13 | SWDIO | SWD | Debug |
-| PA14 | SWDCLK | SWD | Debug |
+| STM32 Pin | Chức năng | Peripheral    | Ghi chú                   |
+| --------- | ----------- | ------------- | -------------------------- |
+| PA0       | ADC1_IN0    | ADC1 (CH_in)  | Dual Interleaved với ADC2 |
+| PA1       | ADC2_IN1    | ADC2 (CH_out) | Dual Interleaved với ADC1 |
+| PA4       | DAC1_OUT    | DAC Channel 1 | TX sine wave               |
+| PA5       | DAC2_OUT    | DAC Channel 2 | Dự phòng / reference     |
+| PB0       | GPIO Output | TMUX1072 SEL0 | Auto-range bit 0           |
+| PB1       | GPIO Output | TMUX1072 SEL1 | Auto-range bit 1           |
+| PA11      | USB_FS_DM   | USB OTG FS    | D-                         |
+| PA12      | USB_FS_DP   | USB OTG FS    | D+                         |
+| PH0       | OSC_IN      | HSE 8 MHz     | Crystal                    |
+| PH1       | OSC_OUT     | HSE 8 MHz     | Crystal                    |
+| PA13      | SWDIO       | SWD           | Debug                      |
+| PA14      | SWDCLK      | SWD           | Debug                      |
 
 ---
 
@@ -221,12 +223,12 @@ Aplifier_Analyze là **Network Analyzer** kiểu kích thích-đo đạc (stimul
 
 ### 4.2 Bảng giới hạn tần số DAC
 
-| Tần số | Biên độ an toàn | Ghi chú |
-|--------|----------------|---------|
-| < 10 kHz | Full 3.3 Vpp | Ít distortion, chất lượng cao |
-| 10 – 100 kHz | ~1–2 Vpp | Cần giảm amplitude trong Sine LUT |
-| 100 – 500 kHz | ~0.3–0.5 Vpp | Distortion tăng, cần LPF chất lượng tốt |
-| > 500 kHz | Không khuyến nghị | Slew rate limit → méo hoàn toàn |
+| Tần số       | Biên độ an toàn  | Ghi chú                                      |
+| -------------- | -------------------- | --------------------------------------------- |
+| < 10 kHz       | Full 3.3 Vpp         | Ít distortion, chất lượng cao             |
+| 10 – 100 kHz  | ~1–2 Vpp            | Cần giảm amplitude trong Sine LUT           |
+| 100 – 500 kHz | ~0.3–0.5 Vpp        | Distortion tăng, cần LPF chất lượng tốt |
+| > 500 kHz      | Không khuyến nghị | Slew rate limit → méo hoàn toàn           |
 
 ### 4.3 Firmware — Sine LUT và control tần số
 
@@ -249,6 +251,7 @@ void DAC_SetFrequency(uint32_t freq_hz) {
 ```
 
 **Dải tần số hỗ trợ với LUT 256 điểm:**
+
 - f_min = 84 MHz / (256 × 65535) ≈ **5 Hz**
 - f_max = 84 MHz / (256 × 1) = **328 kHz** (thực tế giới hạn bởi DAC slew rate → 500 kHz)
 
@@ -307,11 +310,11 @@ void DAC_SetFrequency(uint32_t freq_hz) {
 
 ### 5.2 Bảng auto-range control
 
-| SEL[1:0] | Dải đo | gain_factor | Firmware code |
-|----------|--------|------------|---------------|
-| `00` | ±1.65 V | `1.0f` | `RANGE_X1 = 0` |
-| `01` | ±16.5 V | `0.1f` | `RANGE_DIV10 = 1` |
-| `10` | ±165 V | `0.01f` | `RANGE_DIV100 = 2` |
+| SEL[1:0] | Dải đo | gain_factor | Firmware code        |
+| -------- | -------- | ----------- | -------------------- |
+| `00`   | ±1.65 V | `1.0f`    | `RANGE_X1 = 0`     |
+| `01`   | ±16.5 V | `0.1f`    | `RANGE_DIV10 = 1`  |
+| `10`   | ±165 V  | `0.01f`   | `RANGE_DIV100 = 2` |
 
 ### 5.3 Thuật toán auto-range firmware (trong autorange.c)
 
@@ -363,20 +366,20 @@ SYSCLK = 168 MHz
 
 ### 6.2 Kiểm tra tính hợp lệ
 
-| Clock | Giá trị | Giới hạn ST | Status |
-|-------|---------|-------------|--------|
-| SYSCLK | 168 MHz | ≤ 168 MHz | ✅ |
-| USB OTG FS | 48 MHz | = 48 MHz (phải chính xác) | ✅ |
-| ADCCLK | 21 MHz | ≤ 36 MHz | ✅ |
-| APB1 | 42 MHz | ≤ 42 MHz | ✅ |
-| APB2 | 84 MHz | ≤ 84 MHz | ✅ |
+| Clock      | Giá trị | Giới hạn ST                | Status |
+| ---------- | --------- | ---------------------------- | ------ |
+| SYSCLK     | 168 MHz   | ≤ 168 MHz                   | ✅     |
+| USB OTG FS | 48 MHz    | = 48 MHz (phải chính xác) | ✅     |
+| ADCCLK     | 21 MHz    | ≤ 36 MHz                    | ✅     |
+| APB1       | 42 MHz    | ≤ 42 MHz                    | ✅     |
+| APB2       | 84 MHz    | ≤ 84 MHz                    | ✅     |
 
 ### 6.3 Tốc độ lấy mẫu ADC
 
-| Cấu hình | ADCCLK | Min sample time | Effective rate |
-|----------|--------|-----------------|----------------|
-| Single ADC | 21 MHz | 3 cycles → 15 total | **1.4 MSPS** |
-| Dual Interleaved (ADC1+ADC2) | 21 MHz | 3 cycles | **2.8 MSPS** |
+| Cấu hình                   | ADCCLK | Min sample time      | Effective rate     |
+| ---------------------------- | ------ | -------------------- | ------------------ |
+| Single ADC                   | 21 MHz | 3 cycles → 15 total | **1.4 MSPS** |
+| Dual Interleaved (ADC1+ADC2) | 21 MHz | 3 cycles             | **2.8 MSPS** |
 
 **Sau decimation → stream về PC: ≤ 350 KSPS** (giới hạn bởi USB FS bandwidth ~700 KB/s)
 
@@ -391,6 +394,7 @@ USB FS frame 1 ms → current spike → ripple trên 3.3V rail → ảnh hưởn
 **Giải pháp bắt buộc (phải implement cả 2 tầng):**
 
 **Tầng 1 — PCB/Hardware:**
+
 ```
 3.3V_DIGITAL ──[FB1: Ferrite bead 600Ω@100MHz]──[VDDA]
                                                     │
@@ -404,6 +408,7 @@ Hoặc tốt hơn (nếu có diện tích):
 ```
 
 **Tầng 2 — Firmware:**
+
 ```c
 // Oversampling ×4 → +1 ENOB
 uint32_t sum = 0;
@@ -414,6 +419,7 @@ uint16_t result = (uint16_t)(sum >> 2);
 ### 7.2 PCB Guidelines
 
 **Phân vùng (Partitioning):**
+
 ```
 +------------------------------------------+
 |         DIGITAL ZONE                      |
@@ -434,29 +440,32 @@ uint16_t result = (uint16_t)(sum >> 2);
 **Star Ground Point:** Nối AGND và DGND tại 1 điểm duy nhất (star point) — thường ở gần LDO VDDA hoặc ferrite bead.
 
 **Routing rules:**
+
 - ADC input trace: ngắn nhất có thể, không chạy qua vùng digital
 - Ferrite bead FB1: đặt sát chân VDDA của STM32 (< 5 mm)
 - Tụ bypass 100nF: đặt ngay cạnh chân VDD của STM32 (< 1 mm)
 - Crystal Y1: đặt sát chân OSC_IN/OUT, không route trace dài
 
 **Layer stack (2-layer tối thiểu, 4-layer tốt hơn):**
+
 - Layer 1 (top): Components + signals
 - Layer 2 (bottom): Ground plane liên tục
 
 ### 7.3 Chọn Op-Amp cho AFE
 
 **Yêu cầu chung cho cả U2 (TX buffer) và U4 (DC bias):**
+
 - Rail-to-Rail Input/Output (RRIO) — bắt buộc vì supply = 3.3V đơn
 - GBW ≥ 2× fc_max = 2 × 200 kHz = **400 kHz minimum**
 - Offset voltage < 1 mV (để không làm sai DC measurement)
 - Supply: 3.3V đơn (single supply)
 
-| Op-Amp | GBW | Vos max | Package | Ghi chú |
-|--------|-----|---------|---------|---------|
-| **TLV9001** (TI) | 1 MHz | 0.5 mV | SOT-23-5 | **Khuyến nghị #1** — rẻ, phổ biến |
-| **LMV321** (TI) | 1 MHz | 7 mV | SOT-23-5 | Phổ biến, Vos hơi cao |
-| **MCP6001** (Microchip) | 1 MHz | 4.5 mV | SOT-23-5 | Tốt, dễ mua |
-| **OPA314** (TI) | 3 MHz | 0.15 mV | SOT-23-5 | Chính xác cao, giá cao hơn |
+| Op-Amp                        | GBW   | Vos max | Package  | Ghi chú                                      |
+| ----------------------------- | ----- | ------- | -------- | --------------------------------------------- |
+| **TLV9001** (TI)        | 1 MHz | 0.5 mV  | SOT-23-5 | **Khuyến nghị #1** — rẻ, phổ biến |
+| **LMV321** (TI)         | 1 MHz | 7 mV    | SOT-23-5 | Phổ biến, Vos hơi cao                      |
+| **MCP6001** (Microchip) | 1 MHz | 4.5 mV  | SOT-23-5 | Tốt, dễ mua                                 |
+| **OPA314** (TI)         | 3 MHz | 0.15 mV | SOT-23-5 | Chính xác cao, giá cao hơn                |
 
 ---
 
@@ -479,11 +488,11 @@ uint16_t result = (uint16_t)(sum >> 2);
 
 STM32F407VET6 có nhiều chân VDD và VDDA riêng biệt:
 
-| Chân | Cap bắt buộc |
-|------|-------------|
-| VDDA (pin 22) | 1µF + 100nF (C0G) ngay sát chân |
-| VDD (pins 11, 19, 28, 50, 75, 100) | 100nF mỗi chân |
-| VCAP (pins 21, 49) | **2.2µF** mỗi chân (bắt buộc cho voltage regulator nội bộ STM32) |
+| Chân                              | Cap bắt buộc                                                                |
+| ---------------------------------- | ----------------------------------------------------------------------------- |
+| VDDA (pin 22)                      | 1µF + 100nF (C0G) ngay sát chân                                            |
+| VDD (pins 11, 19, 28, 50, 75, 100) | 100nF mỗi chân                                                              |
+| VCAP (pins 21, 49)                 | **2.2µF** mỗi chân (bắt buộc cho voltage regulator nội bộ STM32) |
 
 > ⚠️ **VCAP là bắt buộc!** STM32F407 có bộ điều áp nội bộ 1.2V — thiếu tụ VCAP → MCU không khởi động được hoặc không ổn định.
 
@@ -517,6 +526,7 @@ Vbias_node ─────────────●─────── [Buff
 ```
 
 **Topology được chọn (simple passive + buffer):**
+
 ```
 Vin_att ──[R_sumA = 10kΩ]──┐
                             ├──[U4: RRIO follower]──► ADC pin
@@ -535,29 +545,29 @@ vin_real = vin_att / gain_factor
 
 ## 9. Thông số hiệu năng thực tế
 
-| Thông số | Spec lý thuyết | Thực tế (sau optimize) | Đủ dùng? |
-|----------|---------------|----------------------|----------|
-| ADC rate (Dual Interleaved) | 4.8 MSPS | **2.8 MSPS** @ 21 MHz ADCCLK | ✅ Vượt target 1 MSPS |
-| ADC ENOB (USB inactive) | 12-bit (10.5 ENOB) | **~10–11 bits** | ✅ |
-| ADC ENOB (USB active, sau fix) | — | **≥9.5–10.5 ENOB** (ferrite + oversampling) | ✅ |
-| DAC TX rate | 1 MSPS | **200–500 kSPS** ổn định | ✅ Đủ sweep ≤500 kHz |
-| USB CDC throughput (optimized) | 1.5 MB/s | **700 KB–1 MB/s** | ✅ Đủ stream 350 KSPS |
-| Bode accuracy | — | **<±1 dB, <±2°** vs RC reference | ✅ |
-| Phase measurement error | — | **<1°** @ SNR >20 dB (Cross-Corr) | ✅ |
+| Thông số                     | Spec lý thuyết   | Thực tế (sau optimize)                            | Đủ dùng?             |
+| ------------------------------ | ------------------ | --------------------------------------------------- | ----------------------- |
+| ADC rate (Dual Interleaved)    | 4.8 MSPS           | **2.8 MSPS** @ 21 MHz ADCCLK                  | ✅ Vượt target 1 MSPS |
+| ADC ENOB (USB inactive)        | 12-bit (10.5 ENOB) | **~10–11 bits**                              | ✅                      |
+| ADC ENOB (USB active, sau fix) | —                 | **≥9.5–10.5 ENOB** (ferrite + oversampling) | ✅                      |
+| DAC TX rate                    | 1 MSPS             | **200–500 kSPS** ổn định                  | ✅ Đủ sweep ≤500 kHz |
+| USB CDC throughput (optimized) | 1.5 MB/s           | **700 KB–1 MB/s**                            | ✅ Đủ stream 350 KSPS |
+| Bode accuracy                  | —                 | **<±1 dB, <±2°** vs RC reference           | ✅                      |
+| Phase measurement error        | —                 | **<1°** @ SNR >20 dB (Cross-Corr)            | ✅                      |
 
 ---
 
 ## 10. Danh sách rủi ro phần cứng
 
-| Rủi ro | Mức độ | Giải pháp |
-|--------|--------|-----------|
-| ADC ENOB giảm khi USB active | 🔴 Cao | Ferrite bead 600Ω@100MHz trên VDDA + LDO + oversampling ×4 |
-| VDDA nhiễu từ digital switching | 🔴 Cao | Star GND, tách AGND/DGND, route ngắn |
-| DAC distortion tại f cao (>200 kHz) | 🟡 Trung bình | Giảm amplitude trong Sine LUT; LPF Sallen-Key chất lượng |
-| Overvoltage ngõ vào ADC | 🟡 Trung bình | Clamping BAT54 + series resistor 1kΩ |
-| Analog Switch bandwidth giới hạn | 🟢 Thấp | TMUX1072 BW=200 MHz — đủ dùng |
-| Crystal startup không ổn định | 🟢 Thấp | Chọn crystal 8 MHz CL=20pF, đặt gần STM32, trace ngắn |
-| Thiếu tụ VCAP cho STM32 | 🔴 Cao | Đặt 2.2µF tại mỗi chân VCAP (bắt buộc, không được thiếu) |
+| Rủi ro                              | Mức độ      | Giải pháp                                                           |
+| ------------------------------------ | -------------- | --------------------------------------------------------------------- |
+| ADC ENOB giảm khi USB active        | 🔴 Cao         | Ferrite bead 600Ω@100MHz trên VDDA + LDO + oversampling ×4         |
+| VDDA nhiễu từ digital switching    | 🔴 Cao         | Star GND, tách AGND/DGND, route ngắn                                |
+| DAC distortion tại f cao (>200 kHz) | 🟡 Trung bình | Giảm amplitude trong Sine LUT; LPF Sallen-Key chất lượng          |
+| Overvoltage ngõ vào ADC            | 🟡 Trung bình | Clamping BAT54 + series resistor 1kΩ                                 |
+| Analog Switch bandwidth giới hạn   | 🟢 Thấp       | TMUX1072 BW=200 MHz — đủ dùng                                     |
+| Crystal startup không ổn định    | 🟢 Thấp       | Chọn crystal 8 MHz CL=20pF, đặt gần STM32, trace ngắn            |
+| Thiếu tụ VCAP cho STM32            | 🔴 Cao         | Đặt 2.2µF tại mỗi chân VCAP (bắt buộc, không được thiếu) |
 
 ---
 
@@ -581,17 +591,17 @@ Trước khi ra Gerber, kiểm tra:
 
 ## Phụ lục B — Tham chiếu tài liệu kỹ thuật
 
-| Tài liệu | Nội dung cần đọc |
-|----------|-----------------|
-| STM32F407 RM0090 | Chương 12 (DAC), 13 (ADC), 10 (DMA), 35 (USB OTG) |
-| STM32F407 Datasheet DS8626 | Electrical characteristics, ADC specs |
-| AN2834 | ADC accuracy, VDDA noise reduction |
-| AN4666 | ADC multimode (dual interleaved) |
-| TI TMUX1072 Datasheet | Analog switch selection, Ron, BW |
-| TI TLV9001 Datasheet | Op-Amp specs, application circuits |
-| TI BAT54 Datasheet | Schottky clamping diode specs |
+| Tài liệu                 | Nội dung cần đọc                                |
+| -------------------------- | --------------------------------------------------- |
+| STM32F407 RM0090           | Chương 12 (DAC), 13 (ADC), 10 (DMA), 35 (USB OTG) |
+| STM32F407 Datasheet DS8626 | Electrical characteristics, ADC specs               |
+| AN2834                     | ADC accuracy, VDDA noise reduction                  |
+| AN4666                     | ADC multimode (dual interleaved)                    |
+| TI TMUX1072 Datasheet      | Analog switch selection, Ron, BW                    |
+| TI TLV9001 Datasheet       | Op-Amp specs, application circuits                  |
+| TI BAT54 Datasheet         | Schottky clamping diode specs                       |
 
 ---
 
-*Tài liệu này được tạo tự động từ Architecture Workflow — 2026-04-18*  
+*Tài liệu này được tạo tự động từ Architecture Workflow — 2026-04-18*
 *Cập nhật khi có thay đổi về linh kiện hoặc topology mạch*
