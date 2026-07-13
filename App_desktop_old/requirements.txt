@@ -1,6 +1,0 @@
-pyqt6>=6.0
-pyqtgraph>=0.13
-numpy
-scipy
-pyserial>=3.0
-pyinstaller

@@ -1,0 +1,4 @@
+h
+loadbin ".pio\build\usb_cdc_test\firmware.bin", 0x08000000
+r
+q

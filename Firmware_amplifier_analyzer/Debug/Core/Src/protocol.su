@@ -1,2 +1,0 @@
-../Core/Src/protocol.c:4:9:protocol_calculate_crc	24	static
-../Core/Src/protocol.c:12:6:protocol_send_osc_data	32	static
