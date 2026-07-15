@@ -51,6 +51,7 @@
 /* USER CODE BEGIN PV */
 SPI_HandleTypeDef hspi1;
 SPI_HandleTypeDef hspi2;
+ads7861_t g_ads7861;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -60,7 +61,9 @@ static void USB_ForceReenumeration(void);
 /* USER CODE BEGIN PFP */
 #if (ACTIVE_MODE != MODE_TEST_USB)
 static void MX_SPI1_Init(void);
+#if (ACTIVE_MODE != MODE_TEST_DAC)
 static void MX_SPI2_Init(void);
+#endif
 #endif
 /* USER CODE END PFP */
 
@@ -101,7 +104,9 @@ int main(void)
   /* USER CODE BEGIN 2 */
 #if (ACTIVE_MODE != MODE_TEST_USB)
   MX_SPI1_Init();
+#if (ACTIVE_MODE != MODE_TEST_DAC)
   MX_SPI2_Init();
+#endif
 #endif
   USB_ForceReenumeration();
   MX_USB_DEVICE_Init();
@@ -110,7 +115,20 @@ int main(void)
   command_parser_init();
 #if (ACTIVE_MODE != MODE_TEST_USB)
   mcp4822_init();
-  ads7861_init();
+#if (ACTIVE_MODE != MODE_TEST_DAC)
+  if (ads7861_init(&g_ads7861, &hspi2,
+                   GPIOB, GPIO_PIN_12,
+                   GPIOA, GPIO_PIN_8,
+                   GPIOB, GPIO_PIN_10,
+                   GPIOB, GPIO_PIN_1,
+                   GPIOB, GPIO_PIN_0,
+                   GPIOB, GPIO_PIN_11,
+                   GPIOB, GPIO_PIN_13,
+                   GPIOB, GPIO_PIN_14) != ADS7861_OK ||
+      ads7861_self_test_parse() != ADS7861_OK) {
+    Error_Handler();
+  }
+#endif
 #endif
   /* USER CODE END 2 */
   /* Infinite loop */
@@ -124,28 +142,40 @@ int main(void)
     command_parser_process();
 
 #if (ACTIVE_MODE == MODE_TEST_DAC)
-    // Chế độ test DAC liên tục: phát sóng Sine với tần số TEST_DAC_FREQUENCY Hz
-    static float angle = 0.0f;
-    float voltage_mv = sinf(angle) * TEST_DAC_AMPLITUDE;
-    // Gửi áp ra DAC kênh 0 (kênh A)
-    mcp4822_set_voltage_mv(0, TEST_DAC_GAIN == 2 ? 1 : 0, voltage_mv);
-    
-    // Tăng góc pha (giả định vòng lặp chạy với tần suất mẫu nhất định)
-    angle += 2.0f * 3.14159265f * TEST_DAC_FREQUENCY / 50000.0f; 
-    if (angle >= 2.0f * 3.14159265f) {
-        angle -= 2.0f * 3.14159265f;
+    /*
+     * MCP4822-only bring-up: 50 Hz, 20-point continuous sine on VOUTA.
+     * X2 transfer is ideally 1 mV/code, so codes 1350..1950 produce a
+     * 1.65 V center with 0.30 V peak. No ADC or calibration is involved.
+     */
+    static const uint16_t sine_codes[TEST_DAC_POINTS_PER_CYCLE] = {
+        1650U, 1743U, 1826U, 1893U, 1935U,
+        1950U, 1935U, 1893U, 1826U, 1743U,
+        1650U, 1557U, 1474U, 1407U, 1365U,
+        1350U, 1365U, 1407U, 1474U, 1557U
+    };
+    static uint32_t last_update_ms = 0U;
+    static uint8_t sample_index = 0U;
+    uint32_t now_ms = HAL_GetTick();
+
+    if (now_ms != last_update_ms) {
+        last_update_ms = now_ms;
+        (void)mcp4822_write_raw(MCP4822_CHANNEL_A, MCP4822_GAIN_X2,
+                                sine_codes[sample_index]);
+        sample_index++;
+        if (sample_index >= TEST_DAC_POINTS_PER_CYCLE) sample_index = 0U;
     }
-    // Delay ngắn để khống chế tốc độ cập nhật mẫu (~20 us)
-    for (volatile uint32_t d = 0; d < 150; d++);
 
 #elif (ACTIVE_MODE == MODE_TEST_ADC)
     // Chế độ test ADC liên tục: đọc áp từ ADS7861 rồi truyền lên PC qua USB
-    uint16_t ch1_val = 0;
-    uint16_t ch2_val = 0;
-    ads7861_read_pair(&ch1_val, &ch2_val);
+    ads7861_sample_pair_t sample;
+    ads7861_status_t adc_status = ads7861_read_pair(
+        &g_ads7861, ADS7861_PAIR_0, &sample);
     
     char msg[64];
-    int len = snprintf(msg, sizeof(msg), "ADC1: %d | ADC2: %d\r\n", ch1_val, ch2_val);
+    int len = snprintf(msg, sizeof(msg),
+                       "ADS:%d A:%d B:%d VALID:%u\r\n",
+                       (int)adc_status, (int)sample.ch_a_raw,
+                       (int)sample.ch_b_raw, sample.valid);
     
     // Gửi lên PC qua cổng COM ảo
     CDC_Transmit_FS((uint8_t*)msg, len);
@@ -362,7 +392,8 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
+  /* 18 MHz: a 16-bit DAC frame takes < 1 us at a 200 kSPS update rate. */
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -373,6 +404,7 @@ static void MX_SPI1_Init(void)
   }
 }
 
+#if (ACTIVE_MODE != MODE_TEST_DAC)
 static void MX_SPI2_Init(void)
 {
   hspi2.Instance = SPI2;
@@ -383,7 +415,8 @@ static void MX_SPI2_Init(void)
   /* ADS7861 serial data is valid on the falling clock edge. */
   hspi2.Init.CLKPhase = SPI_PHASE_2EDGE;
   hspi2.Init.NSS = SPI_NSS_SOFT;
-  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
+  /* APB1=36 MHz: /32 = 1.125 MHz, intentionally conservative for bring-up. */
+  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
   hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -393,6 +426,7 @@ static void MX_SPI2_Init(void)
     Error_Handler();
   }
 }
+#endif
 #endif
 /* USER CODE END 4 */
 

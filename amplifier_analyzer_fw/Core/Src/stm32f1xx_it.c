@@ -22,6 +22,7 @@
 #include "stm32f1xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "test_controller.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -204,6 +205,11 @@ void SysTick_Handler(void)
 void USB_LP_CAN1_RX0_IRQHandler(void)
 {
   HAL_PCD_IRQHandler(&hpcd_USB_FS);
+}
+
+void TIM3_IRQHandler(void)
+{
+  test_controller_dac_timer_irq();
 }
 
 /* USER CODE BEGIN 1 */

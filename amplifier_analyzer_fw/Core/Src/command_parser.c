@@ -2,6 +2,7 @@
 #include "test_controller.h"
 #include "calibration.h"
 #include "range_control.h"
+#include "mcp4822.h"
 #include "config.h"
 #include "protocol.h"
 #include "usbd_cdc_if.h"
@@ -11,6 +12,7 @@
 
 #define CMD_BUF_SIZE 256
 static char cmd_buf[CMD_BUF_SIZE];
+static char execute_buf[CMD_BUF_SIZE];
 static uint16_t cmd_idx = 0;
 static volatile uint8_t pending_ready = 0U;
 
@@ -19,6 +21,20 @@ extern USBD_HandleTypeDef hUsbDeviceFS;
 static void send_response(const char *resp) {
     uint16_t len = strlen(resp);
     protocol_send_raw((uint8_t *)resp, len);
+}
+
+static unsigned int test_error_protocol_code(TestError_t error) {
+    switch (error) {
+        case TEST_ERROR_DAC_SPI:     return 201U;
+        case TEST_ERROR_ADC_TIMEOUT: return 202U;
+        case TEST_ERROR_ADC_SPI:     return 203U;
+        case TEST_ERROR_ADC_FRAME:   return 204U;
+        case TEST_ERROR_ADC_MODE:    return 205U;
+        case TEST_ERROR_CONFIG_FIELDS:return 102U;
+        case TEST_ERROR_DAC_RANGE:   return 103U;
+        case TEST_ERROR_NONE:        return 0U;
+        default:                     return 299U;
+    }
 }
 
 void command_parser_init(void) {
@@ -53,10 +69,15 @@ void command_parser_process(void) {
         return;
     }
 
-    /* Keep pending_ready set while executing so the USB ISR cannot overwrite it. */
-    command_parser_execute(cmd_buf);
+    /*
+     * Copy the completed command, then release the USB receive buffer before
+     * executing it. The host may send the next request as soon as it receives
+     * our response, including while a binary frame is being prepared.
+     */
+    memcpy(execute_buf, cmd_buf, cmd_idx + 1U);
     cmd_idx = 0U;
     pending_ready = 0U;
+    command_parser_execute(execute_buf);
 }
 
 static char* get_param_value(char *str, const char *key) {
@@ -82,6 +103,8 @@ void command_parser_execute(char *cmd_line) {
     else if (strcmp(cmd_line, "INFO") == 0) {
 #if (ACTIVE_MODE == MODE_TEST_USB)
         send_response("DATA:Amplifier Analyzer F103 USB CDC SIM v1.0\n");
+#elif (ACTIVE_MODE == MODE_TEST_DAC)
+        send_response("DATA:Amplifier Analyzer F103 MCP4822 CONTINUOUS TEST\n");
 #else
         send_response("DATA:Amplifier Analyzer F103 v1.0\n");
 #endif
@@ -97,6 +120,24 @@ void command_parser_execute(char *cmd_line) {
         snprintf(range_buf, sizeof(range_buf), "DATA:mode=%s,range=%s\n",
                  range_control_get_mode_name(), range_control_get_range_name());
         send_response(range_buf);
+    }
+    else if (strcmp(cmd_line, "DAC_TEST_STATUS") == 0) {
+        char dac_buf[128];
+        snprintf(dac_buf, sizeof(dac_buf),
+                 "DATA:TX_OK=%lu,TX_ERR=%lu,LAST_FRAME=%04X,FREQ_HZ=%u,UPDATE_HZ=%u,RUN=%u\n",
+                 (unsigned long)mcp4822_get_tx_ok_count(),
+                 (unsigned long)mcp4822_get_tx_error_count(),
+                 mcp4822_get_last_frame(),
+#if (ACTIVE_MODE == MODE_TEST_DAC)
+                 (unsigned int)TEST_DAC_FREQUENCY_HZ,
+                 (unsigned int)TEST_DAC_UPDATE_RATE_HZ,
+                 1U);
+#else
+                 (unsigned int)current_config.freq,
+                 (unsigned int)current_config.fs,
+                 (unsigned int)test_controller_is_dac_stream_running());
+#endif
+        send_response(dac_buf);
     }
     else if (strcmp(cmd_line, "SET_RANGE:AUTO") == 0) {
         range_control_set_auto();
@@ -153,13 +194,67 @@ void command_parser_execute(char *cmd_line) {
         val = get_param_value(params, "SAMPLES");
         if (val) cfg.samples = atoi(val);
         
-        test_controller_configure(&cfg);
-        send_response("OK\n");
+        if (test_controller_configure(&cfg)) {
+            send_response("OK\n");
+        } else {
+            char error_buf[80];
+            TestError_t error = test_controller_get_last_error();
+            snprintf(error_buf, sizeof(error_buf), "ERR:%u,%s\n",
+                     test_error_protocol_code(error),
+                     test_controller_get_last_error_text());
+            send_response(error_buf);
+        }
     } 
     else if (strcmp(cmd_line, "START") == 0) {
-        test_controller_start();
-        send_response("OK\n");
+        if (test_controller_start()) {
+            send_response("OK\n");
+        } else {
+            char error_buf[96];
+            TestError_t error = test_controller_get_last_error();
+            if (error == TEST_ERROR_ADC_FRAME) {
+                uint16_t word_a;
+                uint16_t word_b;
+                test_controller_get_last_adc_words(&word_a, &word_b);
+                snprintf(error_buf, sizeof(error_buf),
+                         "ERR:204,ADC_FRAME,W0=%04X,W1=%04X\n",
+                         word_a, word_b);
+            } else {
+                snprintf(error_buf, sizeof(error_buf), "ERR:%u,%s\n",
+                         test_error_protocol_code(error),
+                         test_controller_get_last_error_text());
+            }
+            send_response(error_buf);
+        }
     } 
+    else if (strcmp(cmd_line, "GET_LAST_ERROR") == 0) {
+        char error_buf[64];
+        snprintf(error_buf, sizeof(error_buf), "DATA:%u,%s\n",
+                 test_error_protocol_code(test_controller_get_last_error()),
+                 test_controller_get_last_error_text());
+        send_response(error_buf);
+    }
+    else if (strcmp(cmd_line, "ADC_GPIO_DIAG") == 0) {
+#if defined(STM32F103xB)
+        char gpio_buf[160];
+        uint32_t idr = GPIOB->IDR;
+        uint32_t odr = GPIOB->ODR;
+        snprintf(gpio_buf, sizeof(gpio_buf),
+                 "DATA:IDR=%04lX,ODR=%04lX,M0=%lu,A0=%lu,BUSY=%lu,"
+                 "M1=%lu,CS=%lu,CLK=%lu,SDO_A=%lu\n",
+                 (unsigned long)(idr & 0xFFFFU),
+                 (unsigned long)(odr & 0xFFFFU),
+                 (unsigned long)((idr >> 0) & 1U),
+                 (unsigned long)((idr >> 1) & 1U),
+                 (unsigned long)((idr >> 10) & 1U),
+                 (unsigned long)((idr >> 11) & 1U),
+                 (unsigned long)((idr >> 12) & 1U),
+                 (unsigned long)((idr >> 13) & 1U),
+                 (unsigned long)((idr >> 14) & 1U));
+        send_response(gpio_buf);
+#else
+        send_response("ERR:301,ADC_GPIO_DIAG_UNSUPPORTED\n");
+#endif
+    }
     else if (strcmp(cmd_line, "STOP") == 0) {
         test_controller_stop();
         send_response("OK\n");

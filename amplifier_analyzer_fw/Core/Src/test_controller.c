@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #if defined(STM32F103xB)
 #include "stm32f1xx_hal.h"
+extern ads7861_t g_ads7861;
 #elif defined(STM32F407xx)
 #include "stm32f4xx_hal.h"
 #endif
@@ -22,12 +23,111 @@
 
 TestState_t current_state = STATE_IDLE;
 TestConfig_t current_config;
+static TestError_t last_test_error = TEST_ERROR_NONE;
+static uint16_t last_adc_word_a = 0U;
+static uint16_t last_adc_word_b = 0U;
 
 // Dual ADC buffers and DAC LUT buffers
-#define MAX_ADC_BUF 2048
+#define MAX_ADC_BUF 512
+#define MAX_DAC_LUT 256
 uint32_t adc_dual_buffer[MAX_ADC_BUF]; // Interleaved ADC1/ADC2 samples
-uint16_t dac_lut[MAX_ADC_BUF];
+uint16_t dac_lut[MAX_DAC_LUT];
 uint32_t dac_lut_size = 256;
+static volatile uint8_t dac_stream_running = 0U;
+static volatile uint16_t dac_stream_index = 0U;
+
+#if (ACTIVE_MODE == MODE_TEST_USB)
+static float usb_sim_phase = 0.0f;
+
+static void test_controller_update_usb_sim_result(void) {
+    const float sim_gain = 0.8f;
+    const float inv_sqrt_two = 0.70710678f;
+    float amplitude_mv = (float)current_config.amp_mv;
+
+    last_result.vin_mean = (float)current_config.offset_mv;
+    last_result.vout_mean = (float)current_config.offset_mv;
+    last_result.vin_rms = amplitude_mv * inv_sqrt_two;
+    last_result.vout_rms = amplitude_mv * sim_gain * inv_sqrt_two;
+    last_result.vin_vpp = 2.0f * amplitude_mv;
+    last_result.vout_vpp = 2.0f * amplitude_mv * sim_gain;
+    last_result.gain_db = -1.9382f;
+    last_result.phase_deg = -25.0f;
+    last_result.freq_est = (float)current_config.freq;
+}
+
+static void test_controller_generate_usb_sim_frame(void) {
+    const float sim_gain = 0.8f;
+    const float sim_phase_offset = -25.0f * M_PI / 180.0f;
+    const float two_pi = 2.0f * M_PI;
+    const float phase_step = fmodf(two_pi * current_config.freq /
+                                   current_config.fs, two_pi);
+    const float step_sin = sinf(phase_step);
+    const float step_cos = cosf(phase_step);
+    const float step5_sin = sinf(5.0f * phase_step);
+    const float step5_cos = cosf(5.0f * phase_step);
+    const float step7_sin = sinf(7.0f * phase_step);
+    const float step7_cos = cosf(7.0f * phase_step);
+    float in_sin = sinf(usb_sim_phase);
+    float in_cos = cosf(usb_sim_phase);
+    float out_sin = sinf(usb_sim_phase + sim_phase_offset);
+    float out_cos = cosf(usb_sim_phase + sim_phase_offset);
+    float harmonic5_sin = sinf(5.0f * usb_sim_phase);
+    float harmonic5_cos = cosf(5.0f * usb_sim_phase);
+    float harmonic7_sin = sinf(7.0f * usb_sim_phase);
+    float harmonic7_cos = cosf(7.0f * usb_sim_phase);
+
+    for (uint32_t i = 0; i < current_config.samples; i++) {
+        float val_in = in_sin;
+        float val_out = sim_gain * out_sin;
+
+        /* Deterministic ripple makes transport/DSP tests more realistic. */
+        val_in += 0.005f * harmonic7_sin;
+        val_out += 0.005f * harmonic5_sin;
+
+        float vin_mv = val_in * current_config.amp_mv +
+                       current_config.offset_mv;
+        float vout_mv = val_out * current_config.amp_mv +
+                        current_config.offset_mv;
+        uint8_t r = range_control_get_current_range();
+
+        float vin_raw_mv = (vin_mv - calib_coeffs.adc1_c[r]) /
+                           calib_coeffs.adc1_m[r];
+        float vout_raw_mv = (vout_mv - calib_coeffs.adc2_c[r]) /
+                            calib_coeffs.adc2_m[r];
+
+        int32_t adc_in = (int32_t)(vin_raw_mv * 2048.0f /
+                                   ADS7861_VREF_MV + 2048.0f);
+        int32_t adc_out = (int32_t)(vout_raw_mv * 2048.0f /
+                                    ADS7861_VREF_MV + 2048.0f);
+        if (adc_in < 0) adc_in = 0;
+        if (adc_in > 4095) adc_in = 4095;
+        if (adc_out < 0) adc_out = 0;
+        if (adc_out > 4095) adc_out = 4095;
+
+        adc_dual_buffer[i] = ((uint32_t)(uint16_t)adc_in << 16) |
+                             (uint16_t)adc_out;
+
+        float next_sin = in_sin * step_cos + in_cos * step_sin;
+        in_cos = in_cos * step_cos - in_sin * step_sin;
+        in_sin = next_sin;
+
+        next_sin = out_sin * step_cos + out_cos * step_sin;
+        out_cos = out_cos * step_cos - out_sin * step_sin;
+        out_sin = next_sin;
+
+        next_sin = harmonic5_sin * step5_cos + harmonic5_cos * step5_sin;
+        harmonic5_cos = harmonic5_cos * step5_cos - harmonic5_sin * step5_sin;
+        harmonic5_sin = next_sin;
+
+        next_sin = harmonic7_sin * step7_cos + harmonic7_cos * step7_sin;
+        harmonic7_cos = harmonic7_cos * step7_cos - harmonic7_sin * step7_sin;
+        harmonic7_sin = next_sin;
+    }
+
+    usb_sim_phase = fmodf(usb_sim_phase +
+                          phase_step * current_config.samples, two_pi);
+}
+#endif
 
 #if defined(STM32F407xx)
 extern DAC_HandleTypeDef hdac;
@@ -36,6 +136,9 @@ extern ADC_HandleTypeDef hadc1;
 
 void test_controller_init(void) {
     current_state = STATE_IDLE;
+    last_test_error = TEST_ERROR_NONE;
+    last_adc_word_a = 0U;
+    last_adc_word_b = 0U;
     
     // Default config
     current_config.wave_type = WAVE_SINE;
@@ -54,7 +157,7 @@ void test_controller_init(void) {
 static void test_controller_generate_lut(void) {
     uint32_t N = current_config.fs / current_config.freq;
     if (N < 10) N = 10;
-    if (N > MAX_ADC_BUF) N = MAX_ADC_BUF;
+    if (N > MAX_DAC_LUT) N = MAX_DAC_LUT;
     dac_lut_size = N;
     
     for (uint32_t i = 0; i < N; i++) {
@@ -78,20 +181,131 @@ static void test_controller_generate_lut(void) {
                 break;
         }
         
-        float voltage_mv = val * current_config.amp_mv + current_config.offset_mv;
-        dac_lut[i] = calibration_voltage_to_dac_code(voltage_mv, current_config.dac_gain);
+        float voltage_mv = DAC_OUTPUT_BIAS_MV +
+                           val * current_config.amp_mv +
+                           current_config.offset_mv;
+        dac_lut[i] = calibration_voltage_to_dac_code(
+            voltage_mv, current_config.dac_gain
+        );
     }
 }
 
-void test_controller_configure(TestConfig_t *config) {
-    memcpy(&current_config, config, sizeof(TestConfig_t));
-    test_controller_generate_lut();
+static void test_controller_dac_stream_stop(void) {
+#if defined(STM32F103xB) && (ACTIVE_MODE == MODE_NORMAL)
+    TIM3->DIER &= ~TIM_DIER_UIE;
+    TIM3->CR1 &= ~TIM_CR1_CEN;
+    HAL_NVIC_DisableIRQ(TIM3_IRQn);
+#endif
+    dac_stream_running = 0U;
+    dac_stream_index = 0U;
 }
 
-void test_controller_start(void) {
-    if (current_state == STATE_RUNNING) return;
+static uint8_t test_controller_dac_stream_start(void) {
+#if defined(STM32F103xB) && (ACTIVE_MODE == MODE_NORMAL)
+    uint32_t timer_clock = HAL_RCC_GetPCLK1Freq();
+    uint32_t prescaler;
+    uint32_t counter_clock;
+    uint32_t period_ticks;
+
+    if (current_config.fs == 0U || dac_lut_size == 0U) return 0U;
+
+    /* APB timer clocks are doubled whenever the APB prescaler is not one. */
+    if ((RCC->CFGR & RCC_CFGR_PPRE1) != RCC_CFGR_PPRE1_DIV1) {
+        timer_clock *= 2U;
+    }
+
+    prescaler = (timer_clock / current_config.fs - 1U) / 65536U;
+    if (prescaler > 65535U) return 0U;
+    counter_clock = timer_clock / (prescaler + 1U);
+    period_ticks = (counter_clock + current_config.fs / 2U) /
+                   current_config.fs;
+    if (period_ticks == 0U || period_ticks > 65536U) return 0U;
+
+    __HAL_RCC_TIM3_CLK_ENABLE();
+    TIM3->CR1 = 0U;
+    TIM3->PSC = (uint16_t)prescaler;
+    TIM3->ARR = (uint16_t)(period_ticks - 1U);
+    TIM3->CNT = 0U;
+    TIM3->EGR = TIM_EGR_UG;
+    TIM3->SR = 0U;
+
+    dac_stream_index = 0U;
+    dac_stream_running = 1U;
+    /* USB remains higher priority so CDC cannot be starved by the DAC tick. */
+    HAL_NVIC_SetPriority(TIM3_IRQn, 2U, 0U);
+    HAL_NVIC_EnableIRQ(TIM3_IRQn);
+    TIM3->DIER = TIM_DIER_UIE;
+    TIM3->CR1 = TIM_CR1_CEN;
+    return 1U;
+#else
+    return 1U;
+#endif
+}
+
+void test_controller_dac_timer_irq(void) {
+#if defined(STM32F103xB) && (ACTIVE_MODE == MODE_NORMAL)
+    if ((TIM3->SR & TIM_SR_UIF) == 0U) return;
+    TIM3->SR &= ~TIM_SR_UIF;
+
+    if (dac_stream_running != 0U && dac_lut_size != 0U) {
+        uint16_t index = dac_stream_index;
+        (void)mcp4822_write_raw_isr(
+            MCP4822_CHANNEL_A,
+            current_config.dac_gain == 2U ? MCP4822_GAIN_X2 : MCP4822_GAIN_X1,
+            dac_lut[index]);
+        index++;
+        if (index >= dac_lut_size) index = 0U;
+        dac_stream_index = index;
+    }
+#endif
+}
+
+uint8_t test_controller_is_dac_stream_running(void) {
+    return dac_stream_running;
+}
+
+uint8_t test_controller_configure(const TestConfig_t *config) {
+    if (config == NULL || config->samples == 0U ||
+        config->samples > MAX_ADC_BUF || config->freq == 0U ||
+        config->fs < config->freq ||
+        (config->dac_gain != 1U && config->dac_gain != 2U)) {
+        last_test_error = TEST_ERROR_CONFIG_FIELDS;
+        return 0U;
+    }
+
+    float excursion_mv = (config->wave_type == WAVE_DC)
+                             ? 0.0f : (float)config->amp_mv;
+    float minimum_mv = DAC_OUTPUT_BIAS_MV +
+                       (float)config->offset_mv - excursion_mv;
+    float maximum_mv = DAC_OUTPUT_BIAS_MV +
+                       (float)config->offset_mv + excursion_mv;
+    float dac_limit_mv = (config->dac_gain == 2U) ? 4095.0f : 2047.5f;
+    if (minimum_mv < 0.0f || maximum_mv > dac_limit_mv) {
+        last_test_error = TEST_ERROR_DAC_RANGE;
+        return 0U;
+    }
+
+    /* CONFIG is only accepted as a new stopped setup. */
+    test_controller_dac_stream_stop();
+    memcpy(&current_config, config, sizeof(TestConfig_t));
+    test_controller_generate_lut();
+    last_test_error = TEST_ERROR_NONE;
+    return 1U;
+}
+
+uint8_t test_controller_start(void) {
+    if (current_state == STATE_RUNNING) return 1U;
     
     current_state = STATE_RUNNING;
+    last_test_error = TEST_ERROR_NONE;
+
+#if defined(STM32F103xB) && (ACTIVE_MODE == MODE_NORMAL)
+    test_controller_generate_lut();
+#endif
+
+#if (ACTIVE_MODE == MODE_TEST_USB)
+    usb_sim_phase = 0.0f;
+#endif
 
     /* AUTO may recapture after a relay change until the range is stable. */
     for (uint8_t range_attempt = 0U; range_attempt < SIGNAL_RANGE_COUNT;
@@ -103,104 +317,130 @@ void test_controller_start(void) {
      * can exercise CONFIG/START/GET_RESULT/GET_SAMPLES without analog hardware.
      * This entire branch is removed by the preprocessor in every other build.
      */
-    const float sim_gain = 0.8f;
-    const float sim_phase = -25.0f * M_PI / 180.0f;
-
-    for (uint32_t i = 0; i < current_config.samples; i++) {
-        float t = (float)i / current_config.fs;
-        float val_in = sinf(2.0f * M_PI * current_config.freq * t);
-        float val_out = sim_gain * sinf(2.0f * M_PI * current_config.freq * t
-                                       + sim_phase);
-
-        /* Deterministic ripple makes transport/DSP tests more realistic. */
-        val_in += 0.005f * sinf(2.0f * M_PI * 7.0f * current_config.freq * t);
-        val_out += 0.005f * sinf(2.0f * M_PI * 5.0f * current_config.freq * t);
-
-        float vin_mv = val_in * current_config.amp_mv + current_config.offset_mv;
-        float vout_mv = val_out * current_config.amp_mv + current_config.offset_mv;
-        uint8_t r = range_control_get_current_range();
-
-        float vin_raw_mv = (vin_mv - calib_coeffs.adc1_c[r]) /
-                           calib_coeffs.adc1_m[r] + 1650.0f;
-        float vout_raw_mv = (vout_mv - calib_coeffs.adc2_c[r]) /
-                            calib_coeffs.adc2_m[r] + 1650.0f;
-
-        int32_t adc_in = (int32_t)(vin_raw_mv * 4095.0f / 3300.0f);
-        int32_t adc_out = (int32_t)(vout_raw_mv * 4095.0f / 3300.0f);
-        if (adc_in < 0) adc_in = 0;
-        if (adc_in > 4095) adc_in = 4095;
-        if (adc_out < 0) adc_out = 0;
-        if (adc_out > 4095) adc_out = 4095;
-
-        adc_dual_buffer[i] = ((uint32_t)(uint16_t)adc_in << 16) |
-                             (uint16_t)adc_out;
-    }
+    test_controller_generate_usb_sim_frame();
 #elif defined(STM32F103xB)
     // STM32F103C8T6 Physical SPI path using external MCP4822 and ADS7861
-    uint16_t ch1_val = 0;
-    uint16_t ch2_val = 0;
+    ads7861_sample_pair_t adc_sample;
     
     for (uint32_t i = 0; i < current_config.samples; i++) {
-        float t = (float)i / current_config.fs;
-        float val = 0.0f;
-        
-        switch (current_config.wave_type) {
-            case WAVE_SINE:
-                val = sinf(2.0f * M_PI * current_config.freq * t);
+        /* Preserve the proven blocking capture sequence for bring-up. */
+        if (mcp4822_write_raw(
+                MCP4822_CHANNEL_A,
+                current_config.dac_gain == 2U ? MCP4822_GAIN_X2
+                                              : MCP4822_GAIN_X1,
+                dac_lut[i % dac_lut_size]) != MCP4822_OK) {
+            last_test_error = TEST_ERROR_DAC_SPI;
+            current_state = STATE_ERROR;
+            return 0U;
+        }
+
+        for (volatile uint32_t d = 0U; d < 40U; d++) {}
+
+        // Capture simultaneously on ADS7861
+        ads7861_status_t adc_status = ADS7861_OK;
+        uint8_t frame_attempt;
+        for (frame_attempt = 0U; frame_attempt < 3U; frame_attempt++) {
+            adc_status = ads7861_read_pair(
+                &g_ads7861, ADS7861_PAIR_0, &adc_sample);
+            last_adc_word_a = adc_sample.word_a;
+            last_adc_word_b = adc_sample.word_b;
+            if (adc_status != ADS7861_OK || adc_sample.valid != 0U) {
                 break;
-            case WAVE_SQUARE:
-                {
-                    uint32_t per_s = current_config.fs / current_config.freq;
-                    val = ((i % per_s) < (per_s / 2)) ? 1.0f : -1.0f;
-                }
-                break;
-            case WAVE_TRIANGLE:
-                {
-                    uint32_t per_s = current_config.fs / current_config.freq;
-                    uint32_t mod = i % per_s;
-                    val = (mod < per_s / 2) ? (4.0f * mod / per_s - 1.0f) : (3.0f - 4.0f * mod / per_s);
-                }
-                break;
-            case WAVE_DC:
-                val = 0.0f;
-                break;
+            }
+        }
+        if (adc_status != ADS7861_OK) {
+            if (adc_status == ADS7861_ERR_TIMEOUT) {
+                last_test_error = TEST_ERROR_ADC_TIMEOUT;
+            } else if (adc_status == ADS7861_ERR_SPI) {
+                last_test_error = TEST_ERROR_ADC_SPI;
+            } else if (adc_status == ADS7861_ERR_INVALID_MODE) {
+                last_test_error = TEST_ERROR_ADC_MODE;
+            } else {
+                last_test_error = TEST_ERROR_CAPTURE;
+            }
+            current_state = STATE_ERROR;
+            test_controller_dac_stream_stop();
+            return 0U;
+        }
+        if (adc_sample.valid == 0U) {
+            last_test_error = TEST_ERROR_ADC_FRAME;
+            current_state = STATE_ERROR;
+            test_controller_dac_stream_stop();
+            return 0U;
         }
         
-        float voltage_mv = val * current_config.amp_mv + current_config.offset_mv;
-        
-        // Write out to external DAC MCP4822
-        mcp4822_set_voltage_mv(0, current_config.dac_gain == 2 ? 1 : 0, voltage_mv);
-        
-        // Brief settling delay (~4.5 us settling margin)
-        for (volatile uint32_t d = 0; d < 40; d++);
-        
-        // Capture simultaneously on ADS7861
-        ads7861_read_pair(&ch1_val, &ch2_val);
-        
-        // Save to ADC buffer
-        adc_dual_buffer[i] = ((uint32_t)ch1_val << 16) | ch2_val;
+        /*
+         * The existing USB/measurement pipeline uses 12-bit offset-binary.
+         * Convert the ADS7861 signed two's-complement samples at this boundary;
+         * the standalone driver always exposes the original signed values.
+         */
+        uint16_t ch1_code = (uint16_t)((int32_t)adc_sample.ch_a_raw + 2048);
+        uint16_t ch2_code = (uint16_t)((int32_t)adc_sample.ch_b_raw + 2048);
+        adc_dual_buffer[i] = ((uint32_t)ch1_code << 16) | ch2_code;
     }
 #else
 #error "No capture implementation for this MCU/build mode"
 #endif
 
+#if (ACTIVE_MODE == MODE_TEST_USB)
+        test_controller_update_usb_sim_result();
+#else
         measurement_engine_process(adc_dual_buffer, current_config.samples,
                                    current_config.fs, current_config.freq);
+#endif
 
         if (!range_control_update_auto_from_samples(adc_dual_buffer,
                                                     current_config.samples)) {
             break;
         }
     }
+    if (current_state == STATE_ERROR) return 0U;
+
+#if defined(STM32F103xB) && (ACTIVE_MODE == MODE_NORMAL)
+    /*
+     * Start the independent continuous generator only after blocking ADS
+     * bring-up capture is complete. This avoids ISR/bit-bang interaction.
+     */
+    if (test_controller_dac_stream_start() == 0U) {
+        last_test_error = TEST_ERROR_CAPTURE;
+        current_state = STATE_ERROR;
+        return 0U;
+    }
+#endif
+    return 1U;
+}
+
+TestError_t test_controller_get_last_error(void) {
+    return last_test_error;
+}
+
+const char *test_controller_get_last_error_text(void) {
+    switch (last_test_error) {
+        case TEST_ERROR_NONE:        return "NONE";
+        case TEST_ERROR_DAC_SPI:     return "DAC_SPI";
+        case TEST_ERROR_ADC_TIMEOUT: return "ADC_TIMEOUT";
+        case TEST_ERROR_ADC_SPI:     return "ADC_SPI";
+        case TEST_ERROR_ADC_FRAME:   return "ADC_FRAME";
+        case TEST_ERROR_ADC_MODE:    return "ADC_MODE";
+        case TEST_ERROR_CONFIG_FIELDS:return "CONFIG_FIELDS";
+        case TEST_ERROR_DAC_RANGE:   return "DAC_RANGE";
+        default:                     return "CAPTURE_FAILED";
+    }
+}
+
+void test_controller_get_last_adc_words(uint16_t *word_a, uint16_t *word_b) {
+    if (word_a != NULL) *word_a = last_adc_word_a;
+    if (word_b != NULL) *word_b = last_adc_word_b;
 }
 
 void test_controller_stop(void) {
     current_state = STATE_IDLE;
+    test_controller_dac_stream_stop();
 #if (ACTIVE_MODE == MODE_TEST_USB)
     /* No analog peripheral is driven in the USB-only build. */
 #elif defined(STM32F103xB)
-    mcp4822_write_raw(0, 0, 0);
-    mcp4822_write_raw(1, 0, 0);
+    mcp4822_shutdown(MCP4822_CHANNEL_A, MCP4822_GAIN_X2);
+    mcp4822_shutdown(MCP4822_CHANNEL_B, MCP4822_GAIN_X2);
 #elif defined(STM32F407xx)
     HAL_DAC_SetValue(&hdac, DAC_CHANNEL_1, DAC_ALIGN_12B_R, 0);
 #endif
@@ -257,4 +497,12 @@ void test_controller_get_samples_bin(void) {
     }
     
     protocol_send_raw(&crc, 1);
+
+#if (ACTIVE_MODE == MODE_TEST_USB)
+    /* Prepare the next phase-continuous frame after this one is fully sent. */
+    if (current_state == STATE_RUNNING) {
+        test_controller_generate_usb_sim_frame();
+        test_controller_update_usb_sim_result();
+    }
+#endif
 }

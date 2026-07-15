@@ -1,0 +1,15 @@
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {3.1}{\ignorespaces Yêu cầu kỹ thuật chính của hệ thống}}{6}{table.caption.8}%
+\contentsline {table}{\numberline {3.2}{\ignorespaces Phân bổ các chân điều khiển chính}}{8}{table.caption.10}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {4.1}{\ignorespaces Các lệnh chính của giao thức ASCII}}{10}{table.caption.11}%
+\contentsline {table}{\numberline {4.2}{\ignorespaces Cấu trúc frame dữ liệu mẫu}}{11}{table.caption.12}%
+\contentsline {table}{\numberline {4.3}{\ignorespaces Tài nguyên firmware sau khi hoàn thiện}}{11}{table.caption.13}%
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {6.1}{\ignorespaces Kết quả kiểm nghiệm USB CDC}}{15}{table.caption.16}%
+\contentsline {table}{\numberline {6.2}{\ignorespaces Kết quả đánh giá các cấu hình lấy mẫu}}{15}{table.caption.17}%
+\contentsline {table}{\numberline {6.3}{\ignorespaces Kết quả phân tích DUT chuẩn tại $20\,\mathrm {kHz}$}}{16}{table.caption.18}%
+\addvspace {10\p@ }

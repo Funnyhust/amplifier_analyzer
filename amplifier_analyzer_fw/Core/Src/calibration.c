@@ -1,4 +1,5 @@
 #include "calibration.h"
+#include "config.h"
 #if defined(STM32F103xB)
 #include "stm32f1xx_hal.h"
 #elif defined(STM32F407xx)
@@ -6,6 +7,7 @@
 #endif
 #include <string.h>
 #include <stdio.h>
+#include <math.h>
 
 CalibCoeffs_t calib_coeffs;
 
@@ -160,28 +162,38 @@ void calibration_save(void) {
 }
 
 uint16_t calibration_voltage_to_dac_code(float voltage_mv, uint8_t gain) {
-    // Vreal = a * code + b -> code = (Vtarget - b) / a
+    /* dac_a/dac_b describe the calibrated X2 transfer in millivolts. */
     float a = calib_coeffs.dac_a;
     float b = calib_coeffs.dac_b;
-    
-    // Compute raw code
-    float target_code = (voltage_mv - b) / a;
-    
-    // Limit to 12-bit
-    if (target_code < 0.0f) return 0;
-    if (target_code > 4095.0f) return 4095;
-    
-    return (uint16_t)target_code;
+    float gain_scale;
+
+    if (gain == 2U) {
+        gain_scale = 1.0f;
+    } else if (gain == 1U) {
+        /* X1 has half the ideal mV/code of X2. */
+        gain_scale = 0.5f;
+    } else {
+        return 0U;
+    }
+    if (fabsf(a) < 1.0e-9f) {
+        return 0U;
+    }
+
+    float target_code = (voltage_mv - b) / (a * gain_scale);
+    if (target_code <= 0.0f) return 0U;
+    if (target_code >= 4095.0f) return 4095U;
+
+    return (uint16_t)(target_code + 0.5f);
 }
 
 float calibration_adc_code_to_voltage(uint16_t code, uint8_t channel, uint8_t range) {
-    float raw = (float)code;
-    
-    // Scale 12-bit code to 0-3300 mV range
-    float v_raw = (raw / 4095.0f) * 3300.0f;
-    
-    // Shift by -1.65V DC offset to get physical input voltage before offset summing
-    float v_shifted = v_raw - 1650.0f;
+    /*
+     * Capture buffers use offset-binary for compatibility with USB framing,
+     * while ADS7861 itself outputs signed 12-bit two's complement. Code 2048
+     * therefore means zero differential input and one LSB is VREF / 2048.
+     */
+    int32_t signed_raw = (int32_t)(code & 0x0FFFU) - 2048;
+    float v_shifted = ((float)signed_raw / 2048.0f) * ADS7861_VREF_MV;
     
     float m = 1.0f;
     float c = 0.0f;

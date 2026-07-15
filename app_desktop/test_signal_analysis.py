@@ -1,0 +1,68 @@
+import math
+import unittest
+
+import numpy as np
+
+from signal_analysis import (
+    analyze_channel,
+    analyze_dut,
+    calculate_sampling_quality,
+    evaluate_pass_fail,
+    raw_adc_to_volts,
+)
+
+
+class SamplingQualityTests(unittest.TestCase):
+    def assert_close(self, actual, expected, places=3):
+        self.assertAlmostEqual(actual, expected, places=places)
+
+    def test_required_sampling_cases(self):
+        cases = [
+            (20_000, 200_000, 10.0, 4.894, 1.637, 0.50, "WARNING_POC_ONLY"),
+            (20_000, 500_000, 25.0, 0.789, 0.263, -2.50, "WARNING_DAC_NOT_SETTLED"),
+            (20_000, 1_000_000, 50.0, 0.197, 0.066, -3.50, "WARNING_DAC_NOT_SETTLED"),
+            (2_000, 200_000, 100.0, 0.049, 0.016, 0.50, "WARNING_DAC_SETTLING_BORDERLINE"),
+        ]
+        for freq, fs, n, peak, zoh, margin, warning in cases:
+            with self.subTest(freq=freq, fs=fs):
+                result = calculate_sampling_quality(freq, fs)
+                self.assert_close(result.samples_per_cycle, n)
+                self.assert_close(result.peak_sampling_error_pct, peak)
+                self.assert_close(result.zoh_droop_pct, zoh)
+                self.assert_close(result.settling_margin_us, margin)
+                self.assertIn(warning, result.warnings)
+
+    def test_channel_and_dut_use_ac_rms(self):
+        fs, freq = 200_000.0, 2_000.0
+        t = np.arange(2000) / fs
+        ch1 = 0.3 * np.sin(2 * np.pi * freq * t) + 0.1
+        ch2 = 0.6 * np.sin(2 * np.pi * freq * t - math.radians(30)) - 0.2
+        m1 = analyze_channel(ch1, fs, freq)
+        m2 = analyze_channel(ch2, fs, freq)
+        dut = analyze_dut(m1, m2, 20 * math.log10(2), 0.1, freq)
+        self.assertAlmostEqual(m1.vmean, 0.1, places=3)
+        self.assertAlmostEqual(m1.vrms_ac, 0.3 / math.sqrt(2), places=3)
+        self.assertAlmostEqual(dut.gain_linear, 2.0, places=3)
+        self.assertAlmostEqual(dut.phase_shift_deg, -30.0, places=2)
+
+    def test_measurement_warning_prevents_absolute_pass(self):
+        fs, freq = 200_000.0, 20_000.0
+        t = np.arange(1024) / fs
+        m1 = analyze_channel(0.3 * np.sin(2 * np.pi * freq * t), fs, freq)
+        m2 = analyze_channel(0.24 * np.sin(2 * np.pi * freq * t), fs, freq)
+        dut = analyze_dut(m1, m2, -1.9382, 0.2, freq)
+        evaluation = evaluate_pass_fail(
+            calculate_sampling_quality(freq, fs), m1, m2, dut, freq
+        )
+        self.assertEqual(evaluation.status, "WARNING")
+        self.assertIn("WARNING_POC_ONLY", evaluation.reasons)
+
+    def test_ads7861_offset_binary_transport_scale(self):
+        volts = raw_adc_to_volts(np.array([0, 2048, 4095]))
+        self.assertAlmostEqual(volts[0], -2.5, places=6)
+        self.assertAlmostEqual(volts[1], 0.0, places=6)
+        self.assertAlmostEqual(volts[2], 2.5 * 2047 / 2048, places=6)
+
+
+if __name__ == "__main__":
+    unittest.main()

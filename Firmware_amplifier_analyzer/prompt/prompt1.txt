@@ -1,0 +1,386 @@
+Bạn là Senior Embedded Firmware Engineer + Senior Desktop App Engineer. 
+Hãy tiếp tục phát triển dự án dev tool đo/phát tín hiệu hiện có của tôi dựa trên base code đã có trong repo.
+
+MỤC TIÊU THIẾT BỊ
+Thiết bị dùng để phát tín hiệu analog qua DAC, đưa vào DUT, đồng thời đo lại tín hiệu đầu vào/đầu ra bằng ADC để phân tích chất lượng tín hiệu. 
+Ứng dụng desktop điều khiển thiết bị qua USB CDC, cấu hình bài test, nhận dữ liệu đo, phân tích tín hiệu và đánh giá PASS/FAIL.
+
+PHẦN CỨNG HIỆN TẠI
+MCU:
+- STM32F103C8T6
+- Dùng USB CDC để giao tiếp với PC
+- Dùng 2 bộ SPI riêng:
+  1. SPI_DAC: giao tiếp DAC MCP4822
+  2. SPI_ADC: giao tiếp ADC ADS7861
+- Không dùng chung SPI cho ADC và DAC nếu base hiện tại đã tách được 2 bus.
+- Dùng Timer phần cứng để tạo nhịp update DAC và sample ADC.
+- Ưu tiên dùng DMA nếu base đã có hoặc nếu có thể triển khai ổn định.
+- Không dùng delay/polling cho luồng realtime phát/đo.
+
+DAC:
+- Chip DAC: MCP4822
+- Giao tiếp SPI, gửi word 16-bit
+- Có 2 kênh nếu cần, nhưng trước mắt ưu tiên kênh đang dùng trong base
+- MCP4822 có gain bit:
+  + GA = 1: gain x1, dải lý tưởng 0–2.048 V
+  + GA = 0: gain x2, dải lý tưởng 0–4.096 V
+- SHDN = 1 để bật output
+- SPI frame 16 bit gồm config bits + 12-bit data
+- Cần tạo driver rõ ràng:
+  + mcp4822_init()
+  + mcp4822_write_raw(channel, gain, code)
+  + mcp4822_set_voltage_mv(channel, gain, mv)
+  + mcp4822_build_frame(channel, gain, code)
+
+ADC:
+- Chip ADC: ADS7861
+- Giao tiếp bằng SPI riêng
+- ADC dùng để đo 2 tín hiệu, ưu tiên simultaneous sampling nếu phần cứng/base đã hỗ trợ.
+- Cần tạo driver rõ ràng:
+  + ads7861_init()
+  + ads7861_start_conversion()
+  + ads7861_read_raw()
+  + ads7861_read_pair()
+  + ads7861_raw_to_voltage()
+- Nếu base đã có timing CONVST/RD/CS riêng thì phải giữ đúng theo base, không tự ý đổi chân.
+- Nếu chưa rõ mode đọc của ADS7861 trong base, hãy đọc code và schematic/comment hiện tại để bám theo cách đang dùng.
+
+USB:
+- USB CDC device
+- PC app gửi command xuống STM32
+- STM32 trả response, status, dữ liệu đo, kết quả xử lý hoặc raw sample block
+- Không stream raw liên tục quá lớn nếu làm nghẽn USB FS.
+- Nên hỗ trợ cả chế độ:
+  1. trả kết quả đã xử lý
+  2. trả sample block khi cần debug/phân tích trên app
+
+YÊU CẦU CÔNG NGHỆ FIRMWARE
+- Nếu repo đang dùng STM32Cube HAL thì tiếp tục dùng HAL.
+- Nếu repo đang dùng PlatformIO thì tiếp tục dùng PlatformIO.
+- Không chuyển sang Arduino framework.
+- Không phá file generated của CubeMX nếu không cần.
+- Logic app nên tách khỏi phần HAL generated.
+- Firmware phải có kiến trúc rõ ràng, dễ bảo trì.
+
+KIẾN TRÚC FIRMWARE MONG MUỐN
+Tổ chức module theo hướng sau, có thể điều chỉnh theo base hiện tại:
+
+src/
+  app/
+    app_main.c/.h
+    test_controller.c/.h
+    command_parser.c/.h
+    protocol.c/.h
+  drivers/
+    mcp4822.c/.h
+    ads7861.c/.h
+    range_control.c/.h
+    usb_cdc_port.c/.h
+  signal/
+    waveform_generator.c/.h
+    waveform_table.c/.h
+    measurement_engine.c/.h
+    rms.c/.h
+    peak_detect.c/.h
+    frequency_detect.c/.h
+  calib/
+    calibration.c/.h
+    flash_store.c/.h
+  platform/
+    board_pinout.h
+    app_config.h
+
+Nếu base đang khác cấu trúc, hãy refactor vừa đủ, không làm quá lớn gây lỗi build.
+
+LUỒNG REALTIME FIRMWARE
+Thiết bị cần chạy theo luồng:
+
+1. PC app gửi cấu hình:
+   - tần số tín hiệu
+   - biên độ
+   - offset nếu có
+   - waveform type: sine/square/triangle/DC
+   - số mẫu mỗi chu kỳ hoặc sample/update rate
+   - DAC gain x1/x2
+   - range DAC nếu phần cứng có
+   - range ADC nếu phần cứng có
+   - thời gian đo hoặc số mẫu cần thu
+
+2. STM32 chuẩn bị waveform table:
+   - Với sine 20 kHz, nếu dùng bộ hiện tại thì mặc định nên dùng 200 kSPS, tương đương 10 mẫu/chu kỳ.
+   - Cho phép cấu hình sample rate, nhưng phải validate:
+     + MCP4822 settling time khoảng 4.5 µs, nên không khuyến nghị update quá 200 kSPS nếu cần chính xác.
+     + Nếu user chọn quá cao, firmware/app cần cảnh báo.
+
+3. Timer tạo tick đều:
+   - Mỗi tick update DAC sample tiếp theo
+   - Trigger/read ADC theo timing phù hợp
+   - Lưu dữ liệu ADC vào buffer vòng hoặc double buffer
+
+4. Khi đủ block mẫu:
+   - Tính nhanh RMS, peak, peak-to-peak, min, max, mean, frequency estimate nếu đủ
+   - Có thể gửi raw block về app nếu app yêu cầu
+   - Trả status rõ ràng
+
+5. Stop test:
+   - Dừng timer
+   - Dừng DMA nếu có
+   - Đưa DAC về mức an toàn, ví dụ 0 V hoặc giữ mức cuối tùy config
+   - Trả summary về PC
+
+CẤU HÌNH MẶC ĐỊNH ĐỀ XUẤT
+- Signal frequency: 20 kHz
+- DAC update/sample rate: 200 kSPS
+- Samples per cycle: 10
+- ADC sample rate: 200 kSPS
+- SPI_DAC: 5–10 MHz
+- SPI_ADC: theo base hiện tại, ưu tiên ổn định trước
+- USB CDC: command + result + optional raw block
+- Không cố 500 kSPS ở bản đầu nếu timing/settling chưa chứng minh ổn.
+
+YÊU CẦU VỀ SAI SỐ VÀ PHÂN TÍCH
+Firmware và app cần hiển thị/cảnh báo các nguồn sai số chính:
+1. DAC offset error
+2. DAC INL/DNL
+3. DAC gain/VREF error
+4. DAC settling time
+5. ADC quantization
+6. ADC gain/offset
+7. Sai số do số mẫu/chu kỳ
+
+Công thức quan trọng:
+- Số mẫu trên chu kỳ:
+  N = Fs / Fsignal
+
+- Sai số bắt hụt đỉnh nếu đo peak bằng ADC:
+  Error_peak = 1 - cos(pi / N)
+
+- Suy hao do DAC zero-order hold:
+  Error_zoh = 1 - sin(pi / N) / (pi / N)
+
+App cần tính và hiển thị các giá trị này theo cấu hình sample rate/tần số hiện tại.
+
+Ví dụ với 20 kHz:
+- 200 kSPS: N = 10 mẫu/chu kỳ
+  + Error_peak ≈ 4.89%
+  + Error_zoh ≈ 1.64%
+- 500 kSPS: N = 25 mẫu/chu kỳ
+  + Error_peak ≈ 0.79%
+  + Error_zoh ≈ 0.26%
+- 1 MSPS: N = 50 mẫu/chu kỳ
+  + Error_peak ≈ 0.20%
+  + Error_zoh ≈ 0.066%
+
+Với bộ hiện tại MCP4822, ưu tiên ổn định ở 200 kSPS trước vì settling DAC khoảng 4.5 µs.
+
+CALIBRATION
+Cần triển khai cơ chế calib riêng cho từng dải DAC/ADC.
+
+DAC calibration:
+- Calib theo công thức:
+  Vreal = a * code + b
+- Từ 2 điểm đo:
+  a = (V2 - V1) / (Code2 - Code1)
+  b = V1 - a * Code1
+- Khi cần phát điện áp:
+  code = round((Vtarget - b) / a)
+- Lưu a,b vào Flash.
+- Nếu có nhiều range/gain:
+  + dac_gain_x1_a/b
+  + dac_gain_x2_a/b
+  + dac_low_range_a/b nếu có chia dải ngoài
+  + dac_high_range_a/b nếu có
+
+ADC calibration:
+- Calib theo công thức:
+  Vinput = m * raw + c
+- Từ 2 điểm chuẩn:
+  m = (V2 - V1) / (Raw2 - Raw1)
+  c = V1 - m * Raw1
+- Lưu hệ số riêng từng kênh, từng range:
+  + adc1_range_low_m/c
+  + adc1_range_mid_m/c
+  + adc1_range_high_m/c
+  + adc2_range_low_m/c
+  + adc2_range_mid_m/c
+  + adc2_range_high_m/c
+
+Cần có command USB để:
+- đọc hệ số calib
+- ghi hệ số calib
+- reset calib default
+- export/import calib nếu app hỗ trợ
+
+GIAO THỨC USB CDC
+Nếu base đã có protocol thì mở rộng trên protocol hiện tại. Nếu chưa có, tạo protocol dạng line-based dễ debug.
+
+Command đề xuất:
+
+PING
+INFO
+GET_STATUS
+
+CONFIG:WAVE=SINE,FREQ=20000,AMP_MV=300,OFFSET_MV=0,DAC_GAIN=X2,FS=200000,SAMPLES=2048
+START
+STOP
+GET_RESULT
+GET_SAMPLES
+GET_CALIB
+SET_CALIB:KEY=dac_x2_a,VALUE=0.001000
+SET_CALIB:KEY=dac_x2_b,VALUE=0.000000
+SAVE_CALIB
+RESET_CALIB
+
+Response dạng rõ ràng:
+OK
+ERR:<code>,<message>
+DATA:<payload>
+RESULT:<json_or_csv_compact>
+
+Nếu dùng JSON line thì phải đảm bảo không tốn RAM quá mức trên STM32F103C8T6.
+
+APP DESKTOP
+Tôi đã có base app desktop. Hãy đọc base hiện tại và nâng cấp, không viết lại từ đầu nếu không cần.
+
+Chức năng app cần có:
+1. Kết nối thiết bị
+   - Chọn COM port
+   - Connect/Disconnect
+   - Ping thiết bị
+   - Hiển thị firmware version/device info
+
+2. Cấu hình phát tín hiệu
+   - Waveform: Sine/Square/Triangle/DC
+   - Frequency
+   - Amplitude
+   - Offset
+   - DAC gain x1/x2
+   - Sample rate/update rate
+   - Samples per cycle tự tính
+   - Cảnh báo nếu sample rate không phù hợp
+
+3. Cấu hình đo
+   - ADC channel/range
+   - Sample rate
+   - Number of samples
+   - Measurement duration
+   - Chọn trả raw samples hoặc chỉ result
+
+4. Hiển thị realtime/result
+   - Plot waveform ADC1
+   - Plot waveform ADC2
+   - Optional plot DAC expected waveform
+   - Hiển thị min/max/mean/RMS/peak-to-peak/frequency
+   - Gain DUT = Vout/Vin nếu có ADC1 đo input và ADC2 đo output
+   - Phase/delay nếu có thể tính đáng tin
+
+5. Phân tích tín hiệu
+   - Tính amplitude
+   - RMS
+   - peak-to-peak
+   - frequency estimate
+   - noise estimate nếu đủ dữ liệu
+   - sai số so với expected
+   - PASS/FAIL theo threshold user đặt
+
+6. Đánh giá PASS/FAIL
+   - User cấu hình tolerance:
+     + amplitude tolerance %
+     + frequency tolerance %
+     + offset tolerance
+     + noise threshold nếu có
+   - App xuất kết luận:
+     + PASS
+     + FAIL
+     + WARNING nếu sample rate quá thấp hoặc DAC settling không đủ
+
+7. Calibration UI
+   - Tab calib DAC
+   - Tab calib ADC
+   - Nhập giá trị đo bằng đồng hồ ngoài
+   - Gửi hệ số xuống firmware
+   - Lưu/đọc/backup hệ số calib
+   - Hiển thị trạng thái calib current/default
+
+8. Export report
+   - CSV raw samples
+   - CSV summary
+   - JSON result
+   - HTML/PDF report nếu base đã có
+   - Report cần ghi:
+     + device info
+     + config test
+     + sample rate
+     + samples per cycle
+     + sai số do lấy mẫu ước lượng
+     + kết quả đo
+     + PASS/FAIL
+     + thời gian test
+
+YÊU CẦU APP VỀ PHÂN TÍCH SAMPLE RATE
+App phải tự tính:
+- Chu kỳ tín hiệu
+- Số mẫu/chu kỳ
+- Sai số peak do lấy mẫu
+- Suy hao ZOH nếu xét phát DAC
+- Cảnh báo nếu:
+  + N < 10: waveform quá thô
+  + N = 10: chỉ phù hợp POC, sai số peak khoảng 4.89%
+  + N >= 25: tốt hơn cho đo peak
+  + MCP4822 update interval < 4.5 µs: cảnh báo DAC settling không đảm bảo
+
+Ví dụ:
+Fsignal = 20 kHz
+Fs = 200 kSPS
+N = 10
+Hiển thị:
+- Period = 50 µs
+- Sample interval = 5 µs
+- Samples/cycle = 10
+- Peak sampling error ≈ 4.89%
+- DAC ZOH droop ≈ 1.64%
+- MCP4822 settling margin: borderline, vì settling ≈ 4.5 µs
+
+YÊU CẦU CODE QUALITY
+- Không hardcode pin nếu đã có board config.
+- Không phá code generated.
+- Có comment rõ ràng cho timing-critical code.
+- Có log lỗi rõ ràng.
+- Có README hướng dẫn build firmware và chạy app.
+- Có tài liệu protocol USB.
+- Có mock/simulate mode cho app nếu chưa cắm thiết bị.
+- App không crash khi mất COM port.
+- Firmware không treo khi nhận command sai.
+- Có timeout USB command.
+- Có trạng thái IDLE/RUNNING/ERROR/CALIBRATION.
+- Không gửi dữ liệu quá lớn làm tràn RAM STM32F103.
+
+YÊU CẦU KIỂM THỬ
+Sau khi code xong cần cung cấp:
+1. Cách build firmware
+2. Cách flash firmware
+3. Cách chạy app desktop
+4. Test checklist:
+   - USB connect OK
+   - PING OK
+   - DAC output DC 100 mV/300 mV/1 V
+   - DAC sine 20 kHz OK
+   - ADC read 2 channel OK
+   - START/STOP OK
+   - GET_RESULT OK
+   - GET_SAMPLES OK
+   - Calib save/load OK
+   - App plot waveform OK
+   - Export CSV/JSON OK
+5. Nếu có lỗi build hoặc thiếu thông tin chân pin, hãy báo rõ cần bổ sung file/schematic nào, không đoán bừa.
+
+ĐẦU RA MONG MUỐN
+Hãy thực hiện trực tiếp trên repo hiện tại:
+- Phân tích cấu trúc base code trước.
+- Liệt kê file sẽ sửa/thêm.
+- Sau đó mới sửa code.
+- Đảm bảo build được.
+- Ghi rõ những phần đã làm, phần chưa làm, lý do.
+- Không tạo quá nhiều file rác.
+- Không đổi kiến trúc lớn nếu không cần.
+- Ưu tiên chạy ổn định trước, tối ưu sau.

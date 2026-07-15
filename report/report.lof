@@ -1,6 +1,10 @@
 \addvspace {10\p@ }
 \addvspace {10\p@ }
 \addvspace {10\p@ }
+\contentsline {figure}{\numberline {3.1}{\ignorespaces Kiến trúc tổng thể của hệ thống phân tích tín hiệu}}{6}{figure.caption.9}%
 \addvspace {10\p@ }
-\contentsline {figure}{\numberline {4.1}{\ignorespaces Giao diện chính - Chế độ Trực quan dạng sóng và Phân tích phổ}}{5}{figure.4.1}%
-\contentsline {figure}{\numberline {4.2}{\ignorespaces Giao diện chính - Chế độ Quét dải tần và Đồ thị Bode}}{6}{figure.4.2}%
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {5.1}{\ignorespaces Giao diện waveform và phân tích điều kiện lấy mẫu}}{12}{figure.caption.14}%
+\contentsline {figure}{\numberline {5.2}{\ignorespaces Bảng thông số từng kênh và phân tích DUT}}{14}{figure.caption.15}%
+\addvspace {10\p@ }
+\addvspace {10\p@ }

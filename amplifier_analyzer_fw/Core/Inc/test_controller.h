@@ -27,14 +27,31 @@ typedef struct {
     uint32_t samples;    // block size
 } TestConfig_t;
 
+typedef enum {
+    TEST_ERROR_NONE = 0,
+    TEST_ERROR_DAC_SPI,
+    TEST_ERROR_ADC_TIMEOUT,
+    TEST_ERROR_ADC_SPI,
+    TEST_ERROR_ADC_FRAME,
+    TEST_ERROR_ADC_MODE,
+    TEST_ERROR_CONFIG_FIELDS,
+    TEST_ERROR_DAC_RANGE,
+    TEST_ERROR_CAPTURE
+} TestError_t;
+
 extern TestState_t current_state;
 extern TestConfig_t current_config;
 
 void test_controller_init(void);
-void test_controller_configure(TestConfig_t *config);
-void test_controller_start(void);
+uint8_t test_controller_configure(const TestConfig_t *config);
+uint8_t test_controller_start(void);
+TestError_t test_controller_get_last_error(void);
+const char *test_controller_get_last_error_text(void);
+void test_controller_get_last_adc_words(uint16_t *word_a, uint16_t *word_b);
 void test_controller_stop(void);
 void test_controller_get_result(char *out_buf, uint16_t max_len);
 void test_controller_get_samples_bin(void);
+void test_controller_dac_timer_irq(void);
+uint8_t test_controller_is_dac_stream_running(void);
 
 #endif /* TEST_CONTROLLER_H */

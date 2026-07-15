@@ -2,6 +2,8 @@ import sys
 import os
 import csv
 import json
+import time
+from datetime import datetime, timezone
 import numpy as np
 import pyqtgraph as pg
 from scipy import signal
@@ -9,9 +11,228 @@ from scipy import signal
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QLabel, QDoubleSpinBox, QPushButton, 
                              QGroupBox, QFormLayout, QGridLayout, QTabWidget, QProgressBar,
-                             QColorDialog, QComboBox, QLineEdit, QMessageBox)
+                             QColorDialog, QComboBox, QLineEdit, QMessageBox,
+                             QTableWidget, QTableWidgetItem, QHeaderView,
+                             QFileDialog, QCheckBox, QScrollArea, QSizePolicy)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QColor
+
+from signal_analysis import (
+    analyze_channel,
+    analyze_dut,
+    calculate_sampling_quality,
+    evaluate_pass_fail,
+    raw_adc_to_volts,
+)
+
+APP_SETTINGS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app_settings.json")
+DEFAULT_APP_SETTINGS = {
+    "language": "vi",
+    "theme": "dark",
+    "ch1_color": "#FFEB3B",
+    "ch2_color": "#00E5FF",
+    "show_grid": True,
+    "auto_scale": True,
+    "line_width": 2,
+}
+
+# English source text is used as the stable translation key. Technical units,
+# protocol names and short metric names intentionally remain unchanged.
+VI_TRANSLATIONS = {
+    "Device Connection": "Kết nối thiết bị",
+    "COM Port:": "Cổng COM:",
+    "Refresh": "Làm mới",
+    "Connect": "Kết nối",
+    "Disconnect": "Ngắt kết nối",
+    "Status: Disconnected (SIMULATION)": "Trạng thái: Chưa kết nối (MÔ PHỎNG)",
+    "Network Analyzer": "Phân tích mạng",
+    "Bode Sweep": "Quét Bode",
+    "Calibration": "Hiệu chuẩn",
+    "Passive Oscillo": "Dao động ký thụ động",
+    "Settings": "Cài đặt",
+    "⚙ Settings": "⚙ Cài đặt",
+    "Analyzer": "Phân tích",
+    "Bode": "Bode",
+    "Oscilloscope": "Oscillo",
+    "Stimulus Signal & Capture Config": "Cấu hình tín hiệu kích thích và thu mẫu",
+    "Waveform Type:": "Dạng sóng:",
+    "TX Frequency:": "Tần số phát:",
+    "TX Amplitude:": "Biên độ phát:",
+    "TX Offset:": "Offset phát:",
+    "DAC Gain Bit:": "Hệ số khuếch đại DAC:",
+    "Sample Rate Fs:": "Tần số lấy mẫu Fs:",
+    "Capture Samples:": "Số mẫu thu:",
+    "ADC Input Range:": "Dải đầu vào ADC:",
+    "Active Range:": "Dải đang dùng:",
+    "Apply Configuration": "Áp dụng cấu hình",
+    "Signal Error Analysis": "Phân tích sai số tín hiệu",
+    "Signal period:": "Chu kỳ tín hiệu:",
+    "Sample interval:": "Khoảng lấy mẫu:",
+    "Samples per cycle (N):": "Số mẫu mỗi chu kỳ (N):",
+    "Peak sampling error:": "Sai số bắt hụt đỉnh:",
+    "DAC ZOH droop:": "Suy hao ZOH của DAC:",
+    "DAC settling time:": "Thời gian xác lập DAC:",
+    "DAC Settling Margin:": "Biên xác lập DAC:",
+    "Measurement quality:": "Chất lượng phép đo:",
+    "Start Test": "Bắt đầu đo",
+    "STOP Test": "DỪNG phép đo",
+    "Export CSV/JSON": "Xuất CSV/JSON",
+    "Include raw samples": "Kèm mẫu thô",
+    "Pass/Fail Tolerance": "Dung sai đánh giá đạt/không đạt",
+    "Target Gain:": "Gain mục tiêu:",
+    "Gain Tol +/-:": "Dung sai gain +/-:",
+    "Frequency Tol +/-:": "Dung sai tần số +/-:",
+    "Input Amplitude Tol +/-:": "Dung sai biên độ vào +/-:",
+    "STATUS: IDLE": "TRẠNG THÁI: CHỜ",
+    "Bode Plot Settings": "Cấu hình đồ thị Bode",
+    "Start Freq:": "Tần số bắt đầu:",
+    "Stop Freq:": "Tần số kết thúc:",
+    "Sweep Points:": "Số điểm quét:",
+    "Run Bode Sweep": "Chạy quét Bode",
+    "Analyzer Results": "Kết quả phân tích",
+    "Measured Gain:": "Gain đo được:",
+    "Phase Shift:": "Độ lệch pha:",
+    "Hardware Coefficients Calibration": "Hiệu chuẩn hệ số phần cứng",
+    "Calibration status:": "Trạng thái hiệu chuẩn:",
+    "DAC Gain X2 Scale (a):": "Hệ số tỷ lệ DAC Gain X2 (a):",
+    "DAC Offset (b):": "Offset DAC (b):",
+    "ADC1 0.3V Gain/Scale:": "ADC1 0.3V Gain/Tỷ lệ:",
+    "ADC1 0.3V Offset:": "ADC1 0.3V Offset:",
+    "ADC1 3.3V Gain/Scale:": "ADC1 3.3V Gain/Tỷ lệ:",
+    "ADC1 3.3V Offset:": "ADC1 3.3V Offset:",
+    "ADC1 10V Gain/Scale:": "ADC1 10V Gain/Tỷ lệ:",
+    "ADC1 10V Offset:": "ADC1 10V Offset:",
+    "ADC2 0.3V Gain/Scale:": "ADC2 0.3V Gain/Tỷ lệ:",
+    "ADC2 0.3V Offset:": "ADC2 0.3V Offset:",
+    "ADC2 3.3V Gain/Scale:": "ADC2 3.3V Gain/Tỷ lệ:",
+    "ADC2 3.3V Offset:": "ADC2 3.3V Offset:",
+    "ADC2 10V Gain/Scale:": "ADC2 10V Gain/Tỷ lệ:",
+    "ADC2 10V Offset:": "ADC2 10V Offset:",
+    "AUTO / 10V (safe startup)": "TỰ ĐỘNG / 10V (khởi động an toàn)",
+    "Read Calib from Dev": "Đọc hiệu chuẩn từ thiết bị",
+    "Write Calib to Dev": "Ghi hiệu chuẩn vào thiết bị",
+    "Reset Defaults": "Khôi phục mặc định",
+    "Export Calib JSON": "Xuất JSON hiệu chuẩn",
+    "Import Calib JSON": "Nhập JSON hiệu chuẩn",
+    "Oscilloscope Settings": "Cài đặt dao động ký",
+    "Time/Div (Window):": "Time/Div (cửa sổ):",
+    "Start Passive Oscillo (RX Only)": "Chạy dao động ký (chỉ thu)",
+    "STOP Passive Oscillo": "DỪNG dao động ký",
+    "External Signal Sim (For Testing)": "Mô phỏng tín hiệu ngoài",
+    "Sim CH1 Freq:": "Tần số mô phỏng CH1:",
+    "Sim CH2 Freq:": "Tần số mô phỏng CH2:",
+    "Oscilloscope Measurements": "Kết quả đo dao động ký",
+    "CH1 Measured Freq:": "Tần số CH1:",
+    "CH2 Measured Freq:": "Tần số CH2:",
+    "Oscilloscope Monitor": "Màn hình dao động ký",
+    "Frequency Sweep (Bode)": "Quét tần số (Bode)",
+    "Measurements": "Kết quả đo",
+    "Channel Measurement": "Thông số từng kênh",
+    "DUT Analysis": "Phân tích DUT",
+    "Metric": "Thông số",
+    "Value": "Giá trị",
+    "DUT Metric": "Thông số DUT",
+    "Vmean Offset": "Offset trung bình",
+    "Frequency": "Tần số",
+    "Period": "Chu kỳ",
+    "Noise RMS": "Nhiễu RMS",
+    "Clipping / Saturation": "Clipping / Bão hòa",
+    "Target gain dB": "Gain mục tiêu dB",
+    "Gain error dB": "Sai số gain dB",
+    "Gain tolerance": "Dung sai gain",
+    "Phase shift": "Độ lệch pha",
+    "Delay": "Độ trễ",
+    "Communication": "Truyền thông",
+    "Result / Reasons": "Kết quả / Nguyên nhân",
+    "Appearance": "Giao diện",
+    "Language:": "Ngôn ngữ:",
+    "Theme:": "Chủ đề:",
+    "Dark": "Tối",
+    "Light": "Sáng",
+    "Waveform display": "Hiển thị dạng sóng",
+    "CH1 Color": "Màu CH1",
+    "CH2 Color": "Màu CH2",
+    "Show plot grid": "Hiện lưới đồ thị",
+    "Auto scale waveform": "Tự động co giãn dạng sóng",
+    "Line width:": "Độ dày nét:",
+    "Restore application defaults": "Khôi phục cài đặt mặc định",
+    "Settings are saved automatically.": "Cài đặt được tự động lưu.",
+    "Time Domain Waveform (Double-click to Maximize)": "Dạng sóng theo thời gian (nhấp đúp để phóng to)",
+    "Bode Plot: Magnitude (Double-click to Maximize)": "Bode: Biên độ (nhấp đúp để phóng to)",
+    "Bode Plot: Phase (Double-click to Maximize)": "Bode: Pha (nhấp đúp để phóng to)",
+    "Voltage": "Điện áp",
+    "Time": "Thời gian",
+    "Gain": "Gain",
+    "Phase": "Pha",
+    "Not available": "Chưa có",
+    "WARNING / DAC not settled": "CẢNH BÁO / DAC chưa xác lập",
+    "WARNING / sampling too low": "CẢNH BÁO / tần số lấy mẫu quá thấp",
+    "WARNING / POC only": "CẢNH BÁO / chỉ phù hợp POC",
+    "WARNING / settling borderline": "CẢNH BÁO / biên xác lập sát giới hạn",
+    "WARNING / limited confidence": "CẢNH BÁO / độ tin cậy hạn chế",
+    "Simulation Mode": "Chế độ mô phỏng",
+    "No device connected. Settings applied to Simulator.": "Chưa kết nối thiết bị. Cấu hình đã áp dụng cho bộ mô phỏng.",
+    "Success": "Thành công",
+    "Error": "Lỗi",
+    "Warning": "Cảnh báo",
+    "Busy": "Đang bận",
+    "Wait for the current capture to finish before disconnecting.": "Hãy chờ lần thu mẫu hiện tại hoàn tất trước khi ngắt kết nối.",
+    "Failed to configure the ADC input range.": "Không thể cấu hình dải đầu vào ADC.",
+    "Configuration applied successfully to device!": "Đã áp dụng cấu hình cho thiết bị.",
+    "Connected device did not reply properly to PING.": "Thiết bị đã kết nối không phản hồi PING hợp lệ.",
+    "Device configuration failed.": "Cấu hình thiết bị thất bại.",
+    "Device did not acknowledge START.": "Thiết bị không xác nhận lệnh START.",
+    "Device is not connected.": "Thiết bị chưa được kết nối.",
+    "Calibration read successfully from hardware Flash!": "Đã đọc hiệu chuẩn từ Flash của thiết bị.",
+    "Calibration coefficients saved into hardware Flash!": "Đã lưu hệ số hiệu chuẩn vào Flash của thiết bị.",
+    "Failed to save calibration coefficients to device.": "Không thể lưu hệ số hiệu chuẩn vào thiết bị.",
+    "Calibration reset to defaults and saved to Flash.": "Đã khôi phục hiệu chuẩn mặc định và lưu vào Flash.",
+    "No raw wave data available to export. Run a live test first.": "Chưa có dữ liệu sóng thô để xuất. Hãy chạy phép đo trước.",
+    "Export Successful": "Xuất dữ liệu thành công",
+    "Export Error": "Lỗi xuất dữ liệu",
+    "Import Error": "Lỗi nhập dữ liệu",
+    "default": "mặc định",
+    "loaded from device": "đã đọc từ thiết bị",
+    "loaded from JSON": "đã đọc từ JSON",
+    "saved to device": "đã lưu vào thiết bị",
+    "modified but not saved": "đã thay đổi, chưa lưu",
+}
+
+DARK_STYLESHEET = """
+    QMainWindow, QWidget { background-color: #121212; color: #E0E0E0; }
+    QWidget { font-family: 'Segoe UI', 'Inter', sans-serif; font-size: 12px; }
+    QGroupBox { font-weight: bold; border: 1px solid #3A3A3A; border-radius: 6px; margin-top: 10px; padding-top: 10px; }
+    QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 3px; }
+    QPushButton { border: 1px solid #454545; border-radius: 4px; padding: 6px 12px; min-height: 20px; background-color: #1E1E1E; }
+    QPushButton:hover { background-color: #2D2D2D; border-color: #5A5A5A; }
+    QDoubleSpinBox, QComboBox, QLineEdit { border: 1px solid #454545; border-radius: 4px; padding: 4px; background-color: #181818; selection-background-color: #1565C0; }
+    QTabWidget::pane { border: 1px solid #3A3A3A; background-color: #121212; }
+    QTabBar::tab { background: #1E1E1E; border: 1px solid #3A3A3A; padding: 7px 12px; }
+    QTabBar::tab:selected { background: #121212; border-bottom-color: #121212; }
+    QTableWidget { background-color: #181818; alternate-background-color: #202020; color: #E0E0E0; gridline-color: #484848; selection-background-color: #1565C0; }
+    QHeaderView::section { background-color: #252525; color: #F0F0F0; border: 1px solid #484848; padding: 4px; font-weight: bold; }
+    QProgressBar { border: 1px solid #454545; background: #181818; text-align: center; }
+    QProgressBar::chunk { background-color: #00897B; }
+    QCheckBox::indicator { width: 15px; height: 15px; }
+"""
+
+LIGHT_STYLESHEET = """
+    QMainWindow, QWidget { background-color: #F4F6F8; color: #202124; }
+    QWidget { font-family: 'Segoe UI', 'Inter', sans-serif; font-size: 12px; }
+    QGroupBox { font-weight: bold; border: 1px solid #B8C0C8; border-radius: 6px; margin-top: 10px; padding-top: 10px; }
+    QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 3px; }
+    QPushButton { border: 1px solid #AAB2BA; border-radius: 4px; padding: 6px 12px; min-height: 20px; background-color: #FFFFFF; }
+    QPushButton:hover { background-color: #E8EDF2; border-color: #7E8994; }
+    QDoubleSpinBox, QComboBox, QLineEdit { border: 1px solid #AAB2BA; border-radius: 4px; padding: 4px; background-color: #FFFFFF; selection-background-color: #90CAF9; }
+    QTabWidget::pane { border: 1px solid #B8C0C8; background-color: #F4F6F8; }
+    QTabBar::tab { background: #E3E8ED; border: 1px solid #B8C0C8; padding: 7px 12px; }
+    QTabBar::tab:selected { background: #FFFFFF; border-bottom-color: #FFFFFF; }
+    QTableWidget { background-color: #FFFFFF; alternate-background-color: #F5F7F9; color: #202124; gridline-color: #B8C0C8; selection-background-color: #90CAF9; }
+    QHeaderView::section { background-color: #E3E8ED; color: #202124; border: 1px solid #B8C0C8; padding: 4px; font-weight: bold; }
+    QProgressBar { border: 1px solid #AAB2BA; background: #FFFFFF; text-align: center; }
+    QProgressBar::chunk { background-color: #00897B; }
+    QCheckBox::indicator { width: 15px; height: 15px; }
+"""
 
 # Try to import serial for USB CDC communication
 SERIAL_AVAILABLE = False
@@ -53,6 +274,23 @@ def generate_external_signals(sampling_time_ms, f1, amp1, f2, amp2, time_offset=
     ch2 = amp2 * np.sin(2 * np.pi * f2 * t_running + np.pi/4) + np.random.normal(0, amp2*0.03, len(t_raw))
     return t_raw, ch1, ch2, sample_rate
 
+
+def generate_configured_signals(freq, amplitude, offset, fs, sample_count,
+                                sim_gain=0.8, sim_phase_deg=-25.0,
+                                time_offset=0.0):
+    """Generate the same finite capture shape used by a connected device."""
+    t = np.arange(sample_count, dtype=np.float64) / fs
+    running_t = t + time_offset
+    omega = 2.0 * np.pi * freq
+    ch1 = offset + amplitude * np.sin(omega * running_t)
+    ch2 = offset + sim_gain * amplitude * np.sin(
+        omega * running_t + np.deg2rad(sim_phase_deg)
+    )
+    noise_scale = max(amplitude * 0.002, 1e-6)
+    ch1 += np.random.normal(0.0, noise_scale, sample_count)
+    ch2 += np.random.normal(0.0, noise_scale, sample_count)
+    return t, ch1, ch2
+
 def measure_frequency(t, v):
     """Estimate signal frequency using zero-crossing method"""
     v_ac = v - np.mean(v)
@@ -76,11 +314,11 @@ def calculate_phase(t, v_in, v_out, freq):
     return (phase_deg + 180.0) % 360.0 - 180.0
 
 def analyze_active(t, v_in, v_out, freq):
-    v_in_rms = np.sqrt(np.mean(v_in**2))
-    v_out_rms = np.sqrt(np.mean(v_out**2))
-    gain_db = 20 * np.log10(v_out_rms / v_in_rms) if v_in_rms > 0 else 0
-    phase_deg = calculate_phase(t, v_in, v_out, freq)
-    return gain_db, phase_deg
+    fs = 1.0 / (t[1] - t[0]) if len(t) > 1 else 1.0
+    ch1_metrics = analyze_channel(v_in, fs, freq)
+    ch2_metrics = analyze_channel(v_out, fs, freq)
+    dut = analyze_dut(ch1_metrics, ch2_metrics, 0.0, float("inf"), freq)
+    return dut.gain_db or 0.0, dut.phase_shift_deg or 0.0
 
 def analyze_passive(t, ch1, ch2):
     f1 = measure_frequency(t, ch1)
@@ -151,6 +389,75 @@ class SweepWorker(QThread):
         self.result.emit(freqs.tolist(), gains, phases)
         self.finished.emit()
 
+
+class LiveCaptureWorker(QThread):
+    """Read one request/response capture without blocking the Qt GUI thread."""
+
+    capture_ready = pyqtSignal(object)
+    capture_error = pyqtSignal(str)
+
+    def __init__(self, serial_conn, expected_samples):
+        super().__init__()
+        self.serial_conn = serial_conn
+        self.expected_samples = expected_samples
+
+    def _read_exact(self, size):
+        data = bytearray()
+        while len(data) < size:
+            chunk = self.serial_conn.read(size - len(data))
+            if not chunk:
+                raise TimeoutError(f"short read: {len(data)}/{size} bytes")
+            data.extend(chunk)
+        return bytes(data)
+
+    def run(self):
+        try:
+            self.serial_conn.write(b"GET_RESULT\n")
+            self.serial_conn.flush()
+            result_line = self.serial_conn.readline().decode("utf-8").strip()
+            device_result = None
+            if result_line.startswith("RESULT:"):
+                try:
+                    device_result = json.loads(result_line[7:])
+                except json.JSONDecodeError:
+                    device_result = None
+
+            # Leave a small request/response guard for the MCU main-loop parser.
+            self.msleep(5)
+
+            self.serial_conn.write(b"GET_SAMPLES\n")
+            self.serial_conn.flush()
+            header = self._read_exact(5)
+            if header[:2] != b"\xaa\xbb":
+                raise ValueError(f"invalid frame header: {header.hex(' ')}")
+            if header[2] != 0x03:
+                raise ValueError(f"unexpected frame type: 0x{header[2]:02X}")
+            payload_length = int.from_bytes(header[3:5], "big")
+            expected_length = self.expected_samples * 4
+            if payload_length != expected_length:
+                raise ValueError(
+                    f"sample length mismatch: {payload_length}/{expected_length} bytes"
+                )
+            payload = self._read_exact(payload_length)
+            received_crc = self._read_exact(1)[0]
+            calculated_crc = 0
+            for value in payload:
+                calculated_crc ^= value
+            if received_crc != calculated_crc:
+                raise ValueError(
+                    f"CRC mismatch: rx=0x{received_crc:02X}, "
+                    f"calc=0x{calculated_crc:02X}"
+                )
+            raw = np.frombuffer(payload, dtype=">u2").copy()
+            self.capture_ready.emit({
+                "ch1_raw": raw[0::2],
+                "ch2_raw": raw[1::2],
+                "device_result": device_result,
+                "frame_bytes": payload_length + 6,
+            })
+        except Exception as exc:
+            self.capture_error.emit(str(exc))
+
 # ==========================================
 # 3. GIAO DIỆN CHÍNH (GUI)
 # ==========================================
@@ -159,8 +466,13 @@ class SignalAnalyzerApp(QMainWindow):
         super().__init__()
         self.setWindowTitle("Signal Analyzer Pro - Reorganized Layer PlatformIO")
         self.resize(1300, 900)
-        
-        self.is_dark_theme = True
+
+        self.app_settings = self.load_app_settings()
+        self.language = self.app_settings["language"]
+        self.is_dark_theme = self.app_settings["theme"] == "dark"
+        self.ch1_color = self.app_settings["ch1_color"]
+        self.ch2_color = self.app_settings["ch2_color"]
+        self.i18n_tabs = []
         self.time_counter = 0.0
         self.current_live_mode = None 
         
@@ -169,13 +481,72 @@ class SignalAnalyzerApp(QMainWindow):
         self.last_raw_ch1 = np.array([])
         self.last_raw_ch2 = np.array([])
         self.last_raw_time = np.array([])
+        self.last_ch1_metrics = None
+        self.last_ch2_metrics = None
+        self.last_dut_metrics = None
+        self.last_evaluation = None
+        self.last_sampling_quality = None
+        self.last_communication_ok = True
+        self.last_data_complete = True
+        self.last_communication_error = ""
+        self.last_command_response = ""
+        self.device_info = "SIMULATOR"
+        self.calibration_status = "default"
+        self.capture_worker = None
+        self.pending_device_stop = False
+        self._closing = False
         
         self.live_timer = QTimer()
         self.live_timer.timeout.connect(self.process_live_data)
 
         self.initUI()
+        self.apply_visual_settings(save=False)
+        self.retranslate_ui()
         self.refresh_com_ports()
-        
+
+    @staticmethod
+    def load_app_settings():
+        settings = DEFAULT_APP_SETTINGS.copy()
+        try:
+            with open(APP_SETTINGS_PATH, "r", encoding="utf-8") as file:
+                loaded = json.load(file)
+            if isinstance(loaded, dict):
+                settings.update({key: loaded[key] for key in settings if key in loaded})
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            pass
+        if settings["language"] not in ("en", "vi"):
+            settings["language"] = DEFAULT_APP_SETTINGS["language"]
+        if settings["theme"] not in ("dark", "light"):
+            settings["theme"] = DEFAULT_APP_SETTINGS["theme"]
+        return settings
+
+    def save_app_settings(self):
+        try:
+            with open(APP_SETTINGS_PATH, "w", encoding="utf-8") as file:
+                json.dump(self.app_settings, file, indent=2, ensure_ascii=False)
+        except OSError as exc:
+            print(f"Unable to save application settings: {exc}")
+
+    def tr(self, source_text):
+        if self.language == "vi":
+            return VI_TRANSLATIONS.get(source_text, source_text)
+        return source_text
+
+    @staticmethod
+    def make_scrollable(widget):
+        """Keep long control tabs usable without forcing a tall main window."""
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
+        scroll.setMinimumSize(0, 0)
+        scroll.setWidget(widget)
+        return scroll
+
     def initUI(self):
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
@@ -185,27 +556,8 @@ class SignalAnalyzerApp(QMainWindow):
         left_panel = QVBoxLayout()
         left_panel.setContentsMargins(0, 0, 10, 0)
         
-        # Theme button & Color Pickers
-        top_ctrl_layout = QHBoxLayout()
-        self.btn_theme = QPushButton("White Theme ☀")
-        self.btn_theme.setStyleSheet("font-weight: bold; height: 30px; background-color: #f0f0f0; color: black;")
-        self.btn_theme.clicked.connect(self.toggle_theme)
-        top_ctrl_layout.addWidget(self.btn_theme)
-        
-        self.btn_col_ch1 = QPushButton("CH1 Color")
-        self.btn_col_ch1.setStyleSheet("background-color: #ffEB3B; color: black; font-weight: bold; height: 30px;")
-        self.btn_col_ch1.clicked.connect(lambda: self.change_channel_color(1))
-        
-        self.btn_col_ch2 = QPushButton("CH2 Color")
-        self.btn_col_ch2.setStyleSheet("background-color: #00E5FF; color: black; font-weight: bold; height: 30px;")
-        self.btn_col_ch2.clicked.connect(lambda: self.change_channel_color(2))
-        
-        top_ctrl_layout.addWidget(self.btn_col_ch1)
-        top_ctrl_layout.addWidget(self.btn_col_ch2)
-        left_panel.addLayout(top_ctrl_layout)
-        
         # ====== DEVICE CONNECTION ======
-        conn_group = QGroupBox("Device Connection")
+        self.conn_group = QGroupBox("Device Connection")
         conn_layout = QGridLayout()
         self.combo_ports = QComboBox()
         self.btn_refresh = QPushButton("Refresh")
@@ -221,11 +573,23 @@ class SignalAnalyzerApp(QMainWindow):
         conn_layout.addWidget(self.btn_refresh, 0, 2)
         conn_layout.addWidget(self.btn_connect, 1, 0, 1, 3)
         conn_layout.addWidget(self.lbl_conn_status, 2, 0, 1, 3)
-        conn_group.setLayout(conn_layout)
-        left_panel.addWidget(conn_group)
+        self.conn_group.setLayout(conn_layout)
+        left_panel.addWidget(self.conn_group)
+
+        self.btn_open_settings = QPushButton("⚙ Settings")
+        self.btn_open_settings.setToolTip(
+            "Change language, theme and waveform display preferences"
+        )
+        self.btn_open_settings.setStyleSheet(
+            "font-weight: bold; min-height: 28px; background-color: #455A64; color: white;"
+        )
+        left_panel.addWidget(self.btn_open_settings)
         
         # TAB WIDGETS
         self.ctrl_tabs = QTabWidget()
+        self.btn_open_settings.clicked.connect(
+            lambda: self.ctrl_tabs.setCurrentIndex(4)
+        )
         
         # ====== TAB 1: NETWORK ANALYZER (CHỦ ĐỘNG) ======
         ana_widget = QWidget()
@@ -264,8 +628,8 @@ class SignalAnalyzerApp(QMainWindow):
         self.ana_spin_fs.valueChanged.connect(self.update_error_metrics)
         
         self.ana_combo_samples = QComboBox()
-        self.ana_combo_samples.addItems(["512", "1024", "2048"])
-        self.ana_combo_samples.setCurrentIndex(1)
+        self.ana_combo_samples.addItems(["128", "256", "512"])
+        self.ana_combo_samples.setCurrentIndex(0)
 
         self.ana_combo_range = QComboBox()
         self.ana_combo_range.addItems([
@@ -287,7 +651,9 @@ class SignalAnalyzerApp(QMainWindow):
         config_layout.addRow("Active Range:", self.lbl_range_status)
         
         self.btn_ana_apply = QPushButton("Apply Configuration")
-        self.btn_ana_apply.clicked.connect(self.apply_device_config)
+        self.btn_ana_apply.clicked.connect(
+            lambda: self.apply_device_config(show_message=True)
+        )
         self.btn_ana_apply.setStyleSheet("font-weight: bold; background-color: #00796B; color: white;")
         config_layout.addRow(self.btn_ana_apply)
         config_group.setLayout(config_layout)
@@ -296,15 +662,23 @@ class SignalAnalyzerApp(QMainWindow):
         # ERROR ESTIMATES PANEL
         err_group = QGroupBox("Signal Error Analysis")
         err_layout = QFormLayout()
+        self.lbl_period = QLabel("50.00 µs")
+        self.lbl_sample_interval = QLabel("5.00 µs")
         self.lbl_samples_cycle = QLabel("10.0")
         self.lbl_peak_err = QLabel("4.89%")
         self.lbl_zoh_droop = QLabel("1.64%")
-        self.lbl_settling_margin = QLabel("5.00 µs (OK)")
+        self.lbl_settling_time = QLabel("4.50 µs")
+        self.lbl_settling_margin = QLabel("0.50 µs")
+        self.lbl_measurement_quality = QLabel("WARNING / POC only")
         
+        err_layout.addRow("Signal period:", self.lbl_period)
+        err_layout.addRow("Sample interval:", self.lbl_sample_interval)
         err_layout.addRow("Samples per cycle (N):", self.lbl_samples_cycle)
         err_layout.addRow("Peak sampling error:", self.lbl_peak_err)
         err_layout.addRow("DAC ZOH droop:", self.lbl_zoh_droop)
+        err_layout.addRow("DAC settling time:", self.lbl_settling_time)
         err_layout.addRow("DAC Settling Margin:", self.lbl_settling_margin)
+        err_layout.addRow("Measurement quality:", self.lbl_measurement_quality)
         err_group.setLayout(err_layout)
         ana_layout.addWidget(err_group)
         
@@ -317,9 +691,12 @@ class SignalAnalyzerApp(QMainWindow):
         self.btn_export = QPushButton("Export CSV/JSON")
         self.btn_export.clicked.connect(self.export_report)
         self.btn_export.setStyleSheet("background-color: #E65100; color: white; font-weight: bold; height: 35px;")
+        self.chk_export_raw = QCheckBox("Include raw samples")
+        self.chk_export_raw.setChecked(True)
         
         run_layout.addWidget(self.btn_ana_live)
         run_layout.addWidget(self.btn_export)
+        run_layout.addWidget(self.chk_export_raw)
         ana_layout.addLayout(run_layout)
         
         # PASS/FAIL CRITERIA
@@ -328,6 +705,8 @@ class SignalAnalyzerApp(QMainWindow):
         
         self.spin_target_gain = QDoubleSpinBox(); self.spin_target_gain.setRange(-50, 50); self.spin_target_gain.setValue(-2.0); self.spin_target_gain.setSuffix(" dB")
         self.spin_tol_gain = QDoubleSpinBox(); self.spin_tol_gain.setRange(0.1, 10); self.spin_tol_gain.setValue(1.5); self.spin_tol_gain.setSuffix(" dB")
+        self.spin_tol_freq = QDoubleSpinBox(); self.spin_tol_freq.setRange(0.01, 25); self.spin_tol_freq.setValue(1.0); self.spin_tol_freq.setSuffix(" %")
+        self.spin_tol_amp = QDoubleSpinBox(); self.spin_tol_amp.setRange(0.1, 50); self.spin_tol_amp.setValue(5.0); self.spin_tol_amp.setSuffix(" %")
         self.lbl_pf_status = QLabel("STATUS: IDLE")
         self.lbl_pf_status.setStyleSheet("font-size: 16px; font-weight: bold; color: gray; qproperty-alignment: AlignCenter;")
         
@@ -335,12 +714,16 @@ class SignalAnalyzerApp(QMainWindow):
         pf_layout.addWidget(self.spin_target_gain, 0, 1)
         pf_layout.addWidget(QLabel("Gain Tol +/-:"), 1, 0)
         pf_layout.addWidget(self.spin_tol_gain, 1, 1)
-        pf_layout.addWidget(self.lbl_pf_status, 2, 0, 1, 2)
+        pf_layout.addWidget(QLabel("Frequency Tol +/-:"), 2, 0)
+        pf_layout.addWidget(self.spin_tol_freq, 2, 1)
+        pf_layout.addWidget(QLabel("Input Amplitude Tol +/-:"), 3, 0)
+        pf_layout.addWidget(self.spin_tol_amp, 3, 1)
+        pf_layout.addWidget(self.lbl_pf_status, 4, 0, 1, 2)
         pf_group.setLayout(pf_layout)
         ana_layout.addWidget(pf_group)
         
         ana_layout.addStretch()
-        self.ctrl_tabs.addTab(ana_widget, "Network Analyzer")
+        self.ctrl_tabs.addTab(self.make_scrollable(ana_widget), "Analyzer")
         
         # ====== TAB 2: BODE SWEEP CONTROL ======
         sweep_widget = QWidget()
@@ -378,7 +761,7 @@ class SignalAnalyzerApp(QMainWindow):
         sweep_layout.addWidget(res_ana_group)
         
         sweep_layout.addStretch()
-        self.ctrl_tabs.addTab(sweep_widget, "Bode Sweep")
+        self.ctrl_tabs.addTab(self.make_scrollable(sweep_widget), "Bode")
         
         # ====== TAB 3: CALIBRATION UI ======
         calib_widget = QWidget()
@@ -399,6 +782,20 @@ class SignalAnalyzerApp(QMainWindow):
         self.cal_adc2_c1 = QLineEdit("0.000000")
         self.cal_adc2_m2 = QLineEdit("100.000000")
         self.cal_adc2_c2 = QLineEdit("0.000000")
+
+        self.calibration_fields = {
+            "dac_x2_a": self.cal_dac_a, "dac_x2_b": self.cal_dac_b,
+            "adc1_r0_m": self.cal_adc1_m0, "adc1_r0_c": self.cal_adc1_c0,
+            "adc1_r1_m": self.cal_adc1_m1, "adc1_r1_c": self.cal_adc1_c1,
+            "adc1_r2_m": self.cal_adc1_m2, "adc1_r2_c": self.cal_adc1_c2,
+            "adc2_r0_m": self.cal_adc2_m0, "adc2_r0_c": self.cal_adc2_c0,
+            "adc2_r1_m": self.cal_adc2_m1, "adc2_r1_c": self.cal_adc2_c1,
+            "adc2_r2_m": self.cal_adc2_m2, "adc2_r2_c": self.cal_adc2_c2,
+        }
+        for field in self.calibration_fields.values():
+            field.textEdited.connect(self.mark_calibration_modified)
+        self.lbl_calib_status = QLabel("default")
+        self.lbl_calib_status.setStyleSheet("color: #FFB74D; font-weight: bold;")
         
         calib_form.addRow("DAC Gain X2 Scale (a):", self.cal_dac_a)
         calib_form.addRow("DAC Offset (b):", self.cal_dac_b)
@@ -414,6 +811,7 @@ class SignalAnalyzerApp(QMainWindow):
         calib_form.addRow("ADC2 3.3V Offset:", self.cal_adc2_c1)
         calib_form.addRow("ADC2 10V Gain/Scale:", self.cal_adc2_m2)
         calib_form.addRow("ADC2 10V Offset:", self.cal_adc2_c2)
+        calib_form.addRow("Calibration status:", self.lbl_calib_status)
         
         btn_read_calib = QPushButton("Read Calib from Dev")
         btn_read_calib.clicked.connect(self.read_calibration_from_device)
@@ -422,16 +820,21 @@ class SignalAnalyzerApp(QMainWindow):
         btn_write_calib.setStyleSheet("background-color: #00796B; color: white; font-weight: bold;")
         btn_reset_calib = QPushButton("Reset Defaults")
         btn_reset_calib.clicked.connect(self.reset_calibration_device)
+        btn_export_calib = QPushButton("Export Calib JSON")
+        btn_export_calib.clicked.connect(self.export_calibration_json)
+        btn_import_calib = QPushButton("Import Calib JSON")
+        btn_import_calib.clicked.connect(self.import_calibration_json)
         
         calib_form.addRow(btn_read_calib)
         calib_form.addRow(btn_write_calib)
         calib_form.addRow(btn_reset_calib)
+        calib_form.addRow(btn_export_calib, btn_import_calib)
         
         calib_group = QGroupBox("Hardware Coefficients Calibration")
         calib_group.setLayout(calib_form)
         calib_layout.addWidget(calib_group)
         calib_layout.addStretch()
-        self.ctrl_tabs.addTab(calib_widget, "Calibration")
+        self.ctrl_tabs.addTab(self.make_scrollable(calib_widget), "Calibration")
         
         # ====== TAB 4: PASSIVE OSCILLO ======
         osc_widget = QWidget()
@@ -473,7 +876,67 @@ class SignalAnalyzerApp(QMainWindow):
         osc_layout.addWidget(res_osc_group)
         
         osc_layout.addStretch()
-        self.ctrl_tabs.addTab(osc_widget, "Passive Oscillo")
+        self.ctrl_tabs.addTab(self.make_scrollable(osc_widget), "Oscilloscope")
+
+        # ====== TAB 5: APPLICATION SETTINGS ======
+        settings_widget = QWidget()
+        settings_layout = QVBoxLayout(settings_widget)
+
+        appearance_group = QGroupBox("Appearance")
+        appearance_form = QFormLayout(appearance_group)
+        self.combo_language = QComboBox()
+        self.combo_language.addItem("Tiếng Việt", "vi")
+        self.combo_language.addItem("English", "en")
+        self.combo_language.setCurrentIndex(
+            max(0, self.combo_language.findData(self.language))
+        )
+        self.combo_theme = QComboBox()
+        self.combo_theme.addItem("Dark", "dark")
+        self.combo_theme.addItem("Light", "light")
+        self.combo_theme.setCurrentIndex(
+            max(0, self.combo_theme.findData(self.app_settings["theme"]))
+        )
+        appearance_form.addRow("Language:", self.combo_language)
+        appearance_form.addRow("Theme:", self.combo_theme)
+        settings_layout.addWidget(appearance_group)
+
+        waveform_group = QGroupBox("Waveform display")
+        waveform_form = QFormLayout(waveform_group)
+        color_buttons = QHBoxLayout()
+        self.btn_col_ch1 = QPushButton("CH1 Color")
+        self.btn_col_ch2 = QPushButton("CH2 Color")
+        self.btn_col_ch1.clicked.connect(lambda: self.change_channel_color(1))
+        self.btn_col_ch2.clicked.connect(lambda: self.change_channel_color(2))
+        color_buttons.addWidget(self.btn_col_ch1)
+        color_buttons.addWidget(self.btn_col_ch2)
+        waveform_form.addRow(color_buttons)
+        self.chk_show_grid = QCheckBox("Show plot grid")
+        self.chk_show_grid.setChecked(bool(self.app_settings["show_grid"]))
+        self.chk_auto_scale = QCheckBox("Auto scale waveform")
+        self.chk_auto_scale.setChecked(bool(self.app_settings["auto_scale"]))
+        self.spin_line_width = QDoubleSpinBox()
+        self.spin_line_width.setRange(1, 6)
+        self.spin_line_width.setDecimals(0)
+        self.spin_line_width.setValue(float(self.app_settings["line_width"]))
+        waveform_form.addRow(self.chk_show_grid)
+        waveform_form.addRow(self.chk_auto_scale)
+        waveform_form.addRow("Line width:", self.spin_line_width)
+        settings_layout.addWidget(waveform_group)
+
+        self.btn_restore_app_defaults = QPushButton("Restore application defaults")
+        self.lbl_settings_saved = QLabel("Settings are saved automatically.")
+        self.lbl_settings_saved.setWordWrap(True)
+        settings_layout.addWidget(self.btn_restore_app_defaults)
+        settings_layout.addWidget(self.lbl_settings_saved)
+        settings_layout.addStretch()
+        self.ctrl_tabs.addTab(self.make_scrollable(settings_widget), "Settings")
+
+        self.combo_language.currentIndexChanged.connect(self.change_language)
+        self.combo_theme.currentIndexChanged.connect(self.change_theme)
+        self.chk_show_grid.toggled.connect(self.update_plot_preferences)
+        self.chk_auto_scale.toggled.connect(self.update_plot_preferences)
+        self.spin_line_width.valueChanged.connect(self.update_plot_preferences)
+        self.btn_restore_app_defaults.clicked.connect(self.restore_app_defaults)
 
         left_panel.addWidget(self.ctrl_tabs)
         main_layout.addLayout(left_panel, stretch=1)
@@ -487,8 +950,8 @@ class SignalAnalyzerApp(QMainWindow):
         self.plot_osc = pg.PlotWidget(title="Time Domain Waveform (Double-click to Maximize)")
         self.plot_osc.showGrid(x=True, y=True); self.plot_osc.addLegend()
         self.plot_osc.setLabel('left', 'Voltage', 'V'); self.plot_osc.setLabel('bottom', 'Time', 's')
-        self.curve_ch1 = self.plot_osc.plot(pen=pg.mkPen('#ffEB3B', width=2), name="CH1 (Vin)")
-        self.curve_ch2 = self.plot_osc.plot(pen=pg.mkPen('#00E5FF', width=2), name="CH2 (Vout)")
+        self.curve_ch1 = self.plot_osc.plot(pen=pg.mkPen(self.ch1_color, width=2), name="CH1 (Vin)")
+        self.curve_ch2 = self.plot_osc.plot(pen=pg.mkPen(self.ch2_color, width=2), name="CH2 (Vout)")
         tab1_layout.addWidget(self.plot_osc)
         self.view_tabs.addTab(tab1, "Oscilloscope Monitor")
         
@@ -515,8 +978,56 @@ class SignalAnalyzerApp(QMainWindow):
         self.plot_bode_gain.scene().sigMouseClicked.connect(lambda evt: self.toggle_maximize(self.plot_bode_gain) if evt.double() else None)
         self.plot_bode_phase.scene().sigMouseClicked.connect(lambda evt: self.toggle_maximize(self.plot_bode_phase) if evt.double() else None)
 
+        # VIEW TAB 3: CHANNEL AND DUT MEASUREMENTS
+        measurement_tab = QWidget()
+        measurement_layout = QVBoxLayout(measurement_tab)
+        self.channel_metric_names = [
+            "Vmax", "Vmin", "Vpp", "Vpeak", "Vrms AC", "Vmean Offset",
+            "Frequency", "Period", "Noise RMS", "Clipping / Saturation",
+        ]
+        self.channel_table = QTableWidget(len(self.channel_metric_names), 3)
+        self.channel_table.setHorizontalHeaderLabels(["Metric", "CH1 Vin", "CH2 Vout"])
+        self.channel_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.channel_table.verticalHeader().setVisible(False)
+        for row, name in enumerate(self.channel_metric_names):
+            self.channel_table.setItem(row, 0, QTableWidgetItem(name))
+            self.channel_table.setItem(row, 1, QTableWidgetItem("N/A"))
+            self.channel_table.setItem(row, 2, QTableWidgetItem("N/A"))
+        channel_group = QGroupBox("Channel Measurement")
+        channel_group_layout = QVBoxLayout(channel_group)
+        channel_group_layout.addWidget(self.channel_table)
+        measurement_layout.addWidget(channel_group)
+
+        self.dut_metric_names = [
+            "Gain linear", "Gain dB", "Target gain dB", "Gain error dB",
+            "Gain tolerance", "Phase shift", "Delay", "Communication",
+            "Result / Reasons",
+        ]
+        self.dut_table = QTableWidget(len(self.dut_metric_names), 2)
+        self.dut_table.setHorizontalHeaderLabels(["DUT Metric", "Value"])
+        self.dut_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.dut_table.verticalHeader().setVisible(False)
+        for row, name in enumerate(self.dut_metric_names):
+            self.dut_table.setItem(row, 0, QTableWidgetItem(name))
+            self.dut_table.setItem(row, 1, QTableWidgetItem("N/A"))
+        dut_group = QGroupBox("DUT Analysis")
+        dut_group_layout = QVBoxLayout(dut_group)
+        dut_group_layout.addWidget(self.dut_table)
+        measurement_layout.addWidget(dut_group)
+        self.view_tabs.addTab(measurement_tab, "Measurements")
+
         main_layout.addWidget(self.view_tabs, stretch=3)
         self.all_plots = [self.plot_osc, self.plot_bode_gain, self.plot_bode_phase]
+        self.i18n_tabs = [
+            (self.ctrl_tabs, 0, "Analyzer"),
+            (self.ctrl_tabs, 1, "Bode"),
+            (self.ctrl_tabs, 2, "Calibration"),
+            (self.ctrl_tabs, 3, "Oscilloscope"),
+            (self.ctrl_tabs, 4, "Settings"),
+            (self.view_tabs, 0, "Oscilloscope Monitor"),
+            (self.view_tabs, 1, "Frequency Sweep (Bode)"),
+            (self.view_tabs, 2, "Measurements"),
+        ]
         
         self.update_error_metrics()
 
@@ -530,10 +1041,11 @@ class SignalAnalyzerApp(QMainWindow):
                 self.combo_ports.addItem(p.device)
                 
     # --- CONFIGURE DEVICE PARAMETERS ---
-    def apply_device_config(self):
+    def apply_device_config(self, show_message=True):
         if not self.serial_conn or not self.serial_conn.is_open:
-            QMessageBox.information(self, "Simulation Mode", "No device connected. Settings applied to Simulator.")
-            return
+            if show_message:
+                QMessageBox.information(self, self.tr("Simulation Mode"), self.tr("No device connected. Settings applied to Simulator."))
+            return True
             
         wave_str = self.ana_combo_wave.currentText()
         freq = int(self.ana_spin_freq.value())
@@ -543,13 +1055,48 @@ class SignalAnalyzerApp(QMainWindow):
         fs = int(self.ana_spin_fs.value())
         samples = int(self.ana_combo_samples.currentText())
 
+        # Match the firmware's biased unipolar MCP4822 output validation.
+        excursion_mv = 0 if wave_str == "DC" else amp_mv
+        dac_min_mv = 1650 + offset_mv - excursion_mv
+        dac_max_mv = 1650 + offset_mv + excursion_mv
+        dac_limit_mv = 2047.5 if dac_gain == "X1" else 4095.0
+        if dac_min_mv < 0 or dac_max_mv > dac_limit_mv:
+            self.last_command_response = (
+                f"LOCAL_DAC_RANGE: {dac_min_mv:.1f}..{dac_max_mv:.1f} mV, "
+                f"allowed 0..{dac_limit_mv:.1f} mV for {dac_gain}"
+            )
+            if show_message:
+                QMessageBox.critical(
+                    self,
+                    self.tr("Error"),
+                    f"{self.tr('Device configuration failed.')}\n"
+                    f"{self.last_command_response}",
+                )
+            return False
+
         if not self.apply_range_config():
-            QMessageBox.critical(self, "Error", "Failed to configure the ADC input range.")
-            return
+            if show_message:
+                QMessageBox.critical(
+                    self,
+                    self.tr("Error"),
+                    f"{self.tr('Failed to configure the ADC input range.')}\n"
+                    f"Device response: {self.last_command_response}",
+                )
+            return False
         
         cmd = f"CONFIG:WAVE={wave_str},FREQ={freq},AMP_MV={amp_mv},OFFSET_MV={offset_mv},DAC_GAIN={dac_gain},FS={fs},SAMPLES={samples}\n"
         if self.serial_send_cmd(cmd):
-            QMessageBox.information(self, "Success", "Configuration applied successfully to device!")
+            if show_message:
+                QMessageBox.information(self, self.tr("Success"), self.tr("Configuration applied successfully to device!"))
+            return True
+        if show_message:
+            QMessageBox.critical(
+                self,
+                self.tr("Error"),
+                f"{self.tr('Device configuration failed.')}\n"
+                f"Device response: {self.last_command_response}",
+            )
+        return False
 
     def apply_range_config(self):
         if not self.serial_conn or not self.serial_conn.is_open:
@@ -590,13 +1137,18 @@ class SignalAnalyzerApp(QMainWindow):
         if self.serial_conn and self.serial_conn.is_open:
             try:
                 self.serial_conn.write(cmd.encode('utf-8'))
+                self.serial_conn.flush()
                 res = self.serial_conn.readline().decode('utf-8').strip()
+                self.last_command_response = res or "TIMEOUT"
                 if res == "OK":
                     return True
                 else:
                     print(f"Error response: {res}")
             except Exception as e:
+                self.last_command_response = f"SERIAL_ERROR:{e}"
                 print(f"Serial send error: {e}")
+        else:
+            self.last_command_response = "PORT_CLOSED"
         return False
         
     def serial_query(self, cmd):
@@ -604,6 +1156,7 @@ class SignalAnalyzerApp(QMainWindow):
             try:
                 self.serial_conn.write(cmd.encode('utf-8'))
                 res = self.serial_conn.readline().decode('utf-8').strip()
+                time.sleep(0.01)
                 return res
             except Exception as e:
                 print(f"Serial query error: {e}")
@@ -613,46 +1166,67 @@ class SignalAnalyzerApp(QMainWindow):
     def toggle_connection(self):
         port = self.combo_ports.currentText()
         if port == "SIMULATE":
+            if self.capture_worker and self.capture_worker.isRunning():
+                QMessageBox.warning(self, self.tr("Busy"), self.tr("Wait for the current capture to finish before disconnecting."))
+                return
             if self.serial_conn and self.serial_conn.is_open:
                 self.serial_conn.close()
             self.serial_conn = None
-            self.lbl_conn_status.setText("Status: Disconnected (SIMULATION)")
+            self.lbl_conn_status.setText(self.tr("Status: Disconnected (SIMULATION)"))
             self.lbl_conn_status.setStyleSheet("color: #ffaa00; font-weight: bold;")
-            self.btn_connect.setText("Connect")
+            self.btn_connect.setText(self.tr("Connect"))
             self.btn_connect.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold;")
             return
             
         if self.serial_conn and self.serial_conn.is_open:
             # Disconnect
+            if self.capture_worker and self.capture_worker.isRunning():
+                QMessageBox.warning(self, self.tr("Busy"), self.tr("Wait for the current capture to finish before disconnecting."))
+                return
             try:
                 self.serial_conn.write(b"STOP\n")
             except Exception:
                 pass
             self.serial_conn.close()
             self.serial_conn = None
-            self.lbl_conn_status.setText("Status: Disconnected (SIMULATION)")
+            self.lbl_conn_status.setText(self.tr("Status: Disconnected (SIMULATION)"))
             self.lbl_conn_status.setStyleSheet("color: #ffaa00; font-weight: bold;")
-            self.btn_connect.setText("Connect")
+            self.btn_connect.setText(self.tr("Connect"))
             self.btn_connect.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold;")
         else:
             # Connect
             try:
-                self.serial_conn = serial.Serial(port, 115200, timeout=1.0)
-                # Verify identity
-                self.serial_conn.write(b"PING\n")
-                res = self.serial_conn.readline().decode('utf-8').strip()
+                # GPIO-clock ADS7861 bring-up can take ~1.7 s for 512 samples.
+                self.serial_conn = serial.Serial(port, 115200, timeout=5.0)
+                time.sleep(0.25)
+                self.serial_conn.reset_input_buffer()
+                res = ""
+                for _ in range(3):
+                    self.serial_conn.write(b"PING\n")
+                    self.serial_conn.flush()
+                    res = self.serial_conn.readline().decode('utf-8').strip()
+                    if res == "OK":
+                        break
+                    time.sleep(0.1)
                 if res == "OK":
                     info = self.serial_query("INFO\n")
-                    self.lbl_conn_status.setText(f"Status: Connected ({info})")
+                    self.device_info = info or "STM32F103 USB CDC"
+                    status_prefix = "Trạng thái: Đã kết nối" if self.language == "vi" else "Status: Connected"
+                    self.lbl_conn_status.setText(f"{status_prefix} ({info})")
                     self.lbl_conn_status.setStyleSheet("color: #4CAF50; font-weight: bold;")
-                    self.btn_connect.setText("Disconnect")
+                    self.btn_connect.setText(self.tr("Disconnect"))
                     self.btn_connect.setStyleSheet("background-color: #F44336; color: white; font-weight: bold;")
                     self.refresh_range_status()
                 else:
                     self.serial_conn.close()
                     self.serial_conn = None
-                    QMessageBox.critical(self, "Error", "Connected device did not reply properly to PING.")
+                    QMessageBox.critical(self, self.tr("Error"), self.tr("Connected device did not reply properly to PING."))
             except Exception as e:
+                if self.serial_conn:
+                    try:
+                        self.serial_conn.close()
+                    except Exception:
+                        pass
                 self.serial_conn = None
                 QMessageBox.critical(self, "Error", f"Failed to connect to port {port}.\nDetails: {e}")
 
@@ -660,55 +1234,184 @@ class SignalAnalyzerApp(QMainWindow):
     def update_error_metrics(self):
         fs = self.ana_spin_fs.value()
         f_sig = self.ana_spin_freq.value()
-        
-        N = fs / f_sig
-        self.lbl_samples_cycle.setText(f"{N:.2f}")
-        
-        # Peak sampling error = 1 - cos(pi / N)
-        if N > 0:
-            peak_err = (1 - np.cos(np.pi / N)) * 100
-            self.lbl_peak_err.setText(f"{peak_err:.3f} %")
-            
-            # ZOH Droop = 1 - sin(pi / N) / (pi / N)
-            zoh_droop = (1 - (np.sin(np.pi / N) / (np.pi / N))) * 100
-            self.lbl_zoh_droop.setText(f"{zoh_droop:.3f} %")
-        else:
-            self.lbl_peak_err.setText("N/A")
-            self.lbl_zoh_droop.setText("N/A")
-            
-        # DAC Settling margin warning
-        sample_interval_us = 1000000.0 / fs
-        if sample_interval_us < 4.5:
-            self.lbl_settling_margin.setText(f"{sample_interval_us:.2f} µs (WARNING: Settling time limit)")
-            self.lbl_settling_margin.setStyleSheet("color: #FF5252; font-weight: bold;")
-        else:
-            self.lbl_settling_margin.setText(f"{sample_interval_us:.2f} µs (OK)")
-            self.lbl_settling_margin.setStyleSheet("color: #4CAF50; font-weight: bold;")
+        quality = calculate_sampling_quality(f_sig, fs)
+        self.last_sampling_quality = quality
+        self.lbl_period.setText(f"{quality.period_us:.2f} µs")
+        self.lbl_sample_interval.setText(f"{quality.sample_interval_us:.2f} µs")
+        self.lbl_samples_cycle.setText(f"{quality.samples_per_cycle:.2f}")
+        self.lbl_peak_err.setText(f"{quality.peak_sampling_error_pct:.3f} %")
+        self.lbl_zoh_droop.setText(f"{quality.zoh_droop_pct:.3f} %")
+        self.lbl_settling_time.setText(f"{quality.dac_settling_time_us:.2f} µs")
+        self.lbl_settling_margin.setText(f"{quality.settling_margin_us:+.2f} µs")
+        self.lbl_measurement_quality.setText(self.tr(quality.summary))
+        color = "#4CAF50" if quality.status == "OK" else "#FFB300"
+        self.lbl_measurement_quality.setStyleSheet(f"color: {color}; font-weight: bold;")
+        margin_color = "#FF5252" if quality.settling_margin_us < 0 else (
+            "#FFB300" if quality.settling_margin_us < 1.0 else "#4CAF50"
+        )
+        self.lbl_settling_margin.setStyleSheet(f"color: {margin_color}; font-weight: bold;")
 
-    # --- DARK / LIGHT THEME TOGGLE ---
-    def toggle_theme(self):
-        self.is_dark_theme = not self.is_dark_theme
-        bg_color, fg_color = ('k', 'w') if self.is_dark_theme else ('w', 'k')
-        self.btn_theme.setText("White Theme ☀" if self.is_dark_theme else "Dark Theme 🌙")
-        self.btn_theme.setStyleSheet(f"font-weight: bold; height: 30px; background-color: {'#f0f0f0' if self.is_dark_theme else '#333333'}; color: {'black' if self.is_dark_theme else 'white'};")
-        for p in self.all_plots:
-            p.setBackground(bg_color)
-            p.getAxis('bottom').setPen(fg_color)
-            p.getAxis('bottom').setTextPen(fg_color)
-            p.getAxis('left').setPen(fg_color)
-            p.getAxis('left').setTextPen(fg_color)
+    # --- APPLICATION SETTINGS / INTERNATIONALIZATION ---
+    def retranslate_ui(self):
+        translatable_types = (QLabel, QPushButton, QCheckBox)
+        for widget_type in translatable_types:
+            for widget in self.findChildren(widget_type):
+                source = widget.property("i18n_source")
+                if not source and widget.text() in VI_TRANSLATIONS:
+                    source = widget.text()
+                    widget.setProperty("i18n_source", source)
+                if source:
+                    widget.setText(self.tr(source))
+
+        for group in self.findChildren(QGroupBox):
+            source = group.property("i18n_source")
+            if not source and group.title() in VI_TRANSLATIONS:
+                source = group.title()
+                group.setProperty("i18n_source", source)
+            if source:
+                group.setTitle(self.tr(source))
+
+        for tabs, index, source in self.i18n_tabs:
+            tabs.setTabText(index, self.tr(source))
+
+        self.combo_theme.blockSignals(True)
+        self.combo_theme.setItemText(0, self.tr("Dark"))
+        self.combo_theme.setItemText(1, self.tr("Light"))
+        self.combo_theme.blockSignals(False)
+
+        self.channel_table.setHorizontalHeaderLabels([
+            self.tr("Metric"), "CH1 Vin", "CH2 Vout"
+        ])
+        for row, source in enumerate(self.channel_metric_names):
+            self.channel_table.setItem(row, 0, QTableWidgetItem(self.tr(source)))
+        self.dut_table.setHorizontalHeaderLabels([self.tr("DUT Metric"), self.tr("Value")])
+        for row, source in enumerate(self.dut_metric_names):
+            self.dut_table.setItem(row, 0, QTableWidgetItem(self.tr(source)))
+
+        self.plot_osc.setTitle(self.tr("Time Domain Waveform (Double-click to Maximize)"))
+        self.plot_osc.setLabel('left', self.tr("Voltage"), 'V')
+        self.plot_osc.setLabel('bottom', self.tr("Time"), 's')
+        self.plot_bode_gain.setTitle(self.tr("Bode Plot: Magnitude (Double-click to Maximize)"))
+        self.plot_bode_gain.setLabel('left', self.tr("Gain"), 'dB')
+        self.plot_bode_gain.setLabel('bottom', self.tr("Frequency"), 'Hz')
+        self.plot_bode_phase.setTitle(self.tr("Bode Plot: Phase (Double-click to Maximize)"))
+        self.plot_bode_phase.setLabel('left', self.tr("Phase"), 'Deg')
+        self.plot_bode_phase.setLabel('bottom', self.tr("Frequency"), 'Hz')
+
+        if self.live_timer.isActive():
+            if self.current_live_mode == 'ANALYZER':
+                self.btn_ana_live.setText(self.tr("STOP Test"))
+            else:
+                self.btn_osc_live.setText(self.tr("STOP Passive Oscillo"))
+        else:
+            self.btn_ana_live.setText(self.tr("Start Test"))
+            self.btn_osc_live.setText(self.tr("Start Passive Oscillo (RX Only)"))
+
+        if self.serial_conn and self.serial_conn.is_open:
+            self.btn_connect.setText(self.tr("Disconnect"))
+            status_prefix = "Trạng thái: Đã kết nối" if self.language == "vi" else "Status: Connected"
+            self.lbl_conn_status.setText(f"{status_prefix} ({self.device_info})")
+        else:
+            self.btn_connect.setText(self.tr("Connect"))
+            self.lbl_conn_status.setText(self.tr("Status: Disconnected (SIMULATION)"))
+        self.set_calibration_status(self.calibration_status)
+        self.update_error_metrics()
+
+    def change_language(self, _index=None):
+        language = self.combo_language.currentData()
+        if language not in ("en", "vi"):
+            return
+        self.language = language
+        self.app_settings["language"] = language
+        self.save_app_settings()
+        self.retranslate_ui()
+
+    def change_theme(self, _index=None):
+        theme = self.combo_theme.currentData()
+        if theme not in ("dark", "light"):
+            return
+        self.app_settings["theme"] = theme
+        self.is_dark_theme = theme == "dark"
+        self.apply_visual_settings()
+
+    def update_plot_preferences(self, _value=None):
+        self.app_settings["show_grid"] = self.chk_show_grid.isChecked()
+        self.app_settings["auto_scale"] = self.chk_auto_scale.isChecked()
+        self.app_settings["line_width"] = int(self.spin_line_width.value())
+        self.apply_visual_settings()
+
+    def apply_visual_settings(self, save=True):
+        self.is_dark_theme = self.app_settings["theme"] == "dark"
+        QApplication.instance().setStyleSheet(
+            DARK_STYLESHEET if self.is_dark_theme else LIGHT_STYLESHEET
+        )
+        bg_color, fg_color = ('#101010', '#E8E8E8') if self.is_dark_theme else ('#FFFFFF', '#202124')
+        show_grid = bool(self.app_settings["show_grid"])
+        for plot in self.all_plots:
+            plot.setBackground(bg_color)
+            plot.showGrid(x=show_grid, y=show_grid, alpha=0.3)
+            plot.getAxis('bottom').setPen(fg_color)
+            plot.getAxis('bottom').setTextPen(fg_color)
+            plot.getAxis('left').setPen(fg_color)
+            plot.getAxis('left').setTextPen(fg_color)
+
+        width = int(self.app_settings["line_width"])
+        self.curve_ch1.setPen(pg.mkPen(color=self.ch1_color, width=width))
+        self.curve_ch2.setPen(pg.mkPen(color=self.ch2_color, width=width))
+        self.update_color_button_styles()
+        if self.app_settings["auto_scale"]:
+            self.plot_osc.enableAutoRange(x=True, y=True)
+        else:
+            self.plot_osc.disableAutoRange()
+        if save:
+            self.save_app_settings()
+
+    def update_color_button_styles(self):
+        for button, color_value in (
+            (self.btn_col_ch1, self.ch1_color),
+            (self.btn_col_ch2, self.ch2_color),
+        ):
+            color = QColor(color_value)
+            text_color = 'white' if color.lightness() < 128 else 'black'
+            button.setStyleSheet(
+                f"background-color: {color_value}; color: {text_color}; "
+                "font-weight: bold; min-height: 30px;"
+            )
+
+    def restore_app_defaults(self):
+        self.app_settings = DEFAULT_APP_SETTINGS.copy()
+        self.language = self.app_settings["language"]
+        self.ch1_color = self.app_settings["ch1_color"]
+        self.ch2_color = self.app_settings["ch2_color"]
+        for widget in (
+            self.combo_language, self.combo_theme, self.chk_show_grid,
+            self.chk_auto_scale, self.spin_line_width,
+        ):
+            widget.blockSignals(True)
+        self.combo_language.setCurrentIndex(self.combo_language.findData(self.language))
+        self.combo_theme.setCurrentIndex(self.combo_theme.findData(self.app_settings["theme"]))
+        self.chk_show_grid.setChecked(self.app_settings["show_grid"])
+        self.chk_auto_scale.setChecked(self.app_settings["auto_scale"])
+        self.spin_line_width.setValue(self.app_settings["line_width"])
+        for widget in (
+            self.combo_language, self.combo_theme, self.chk_show_grid,
+            self.chk_auto_scale, self.spin_line_width,
+        ):
+            widget.blockSignals(False)
+        self.apply_visual_settings()
+        self.retranslate_ui()
 
     def change_channel_color(self, channel):
         color = QColorDialog.getColor()
         if color.isValid():
             hex_color = color.name()
-            text_color = 'white' if color.lightness() < 128 else 'black'
             if channel == 1:
-                self.curve_ch1.setPen(pg.mkPen(color=hex_color, width=2))
-                self.btn_col_ch1.setStyleSheet(f"background-color: {hex_color}; color: {text_color}; font-weight: bold; height: 30px;")
+                self.ch1_color = hex_color
+                self.app_settings["ch1_color"] = hex_color
             else:
-                self.curve_ch2.setPen(pg.mkPen(color=hex_color, width=2))
-                self.btn_col_ch2.setStyleSheet(f"background-color: {hex_color}; color: {text_color}; font-weight: bold; height: 30px;")
+                self.ch2_color = hex_color
+                self.app_settings["ch2_color"] = hex_color
+            self.apply_visual_settings()
 
     def toggle_maximize(self, clicked_widget):
         parent_layout = clicked_widget.parentWidget().layout()
@@ -727,33 +1430,53 @@ class SignalAnalyzerApp(QMainWindow):
         if self.live_timer.isActive():
             self.live_timer.stop()
             if self.serial_conn and self.serial_conn.is_open:
-                self.serial_send_cmd("STOP\n")
-            self.btn_ana_live.setText("Start Test")
+                if self.capture_worker and self.capture_worker.isRunning():
+                    self.pending_device_stop = True
+                else:
+                    self.serial_send_cmd("STOP\n")
+            self.btn_ana_live.setText(self.tr("Start Test"))
             self.btn_ana_live.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; height: 35px;")
-            self.btn_osc_live.setText("Start Passive Oscillo (RX Only)")
+            self.btn_osc_live.setText(self.tr("Start Passive Oscillo (RX Only)"))
             self.btn_osc_live.setStyleSheet("background-color: #9C27B0; color: white; font-weight: bold; height: 35px;")
-            self.ctrl_tabs.setTabEnabled(0, True); self.ctrl_tabs.setTabEnabled(1, True); self.ctrl_tabs.setTabEnabled(2, True)
-            self.lbl_pf_status.setText("STATUS: IDLE")
+            for index in range(self.ctrl_tabs.count()):
+                self.ctrl_tabs.setTabEnabled(index, True)
+            self.lbl_pf_status.setText(self.tr("STATUS: IDLE"))
             self.lbl_pf_status.setStyleSheet("font-size: 16px; font-weight: bold; color: gray; qproperty-alignment: AlignCenter;")
         else:
             self.current_live_mode = mode
             self.view_tabs.setCurrentIndex(0)
             
             if self.serial_conn and self.serial_conn.is_open:
-                # Apply current parameters
-                self.apply_device_config()
-                self.serial_send_cmd("START\n")
+                if not self.apply_device_config(show_message=False):
+                    QMessageBox.critical(
+                        self,
+                        self.tr("Error"),
+                        f"{self.tr('Device configuration failed.')}\n"
+                        f"Device response: {self.last_command_response}",
+                    )
+                    return
+                if not self.serial_send_cmd("START\n"):
+                    QMessageBox.critical(
+                        self,
+                        self.tr("Error"),
+                        f"{self.tr('Device did not acknowledge START.')}\n"
+                        f"Device response: {self.last_command_response}",
+                    )
+                    return
                 
-            self.live_timer.start(50) # 20fps
+            self.pending_device_stop = False
+            self.last_communication_ok = True
+            self.last_data_complete = True
+            self.live_timer.start(50)
             
             if mode == 'ANALYZER':
-                self.btn_ana_live.setText("STOP Test")
+                self.btn_ana_live.setText(self.tr("STOP Test"))
                 self.btn_ana_live.setStyleSheet("background-color: #F44336; color: white; font-weight: bold; height: 35px;")
                 self.ctrl_tabs.setTabEnabled(1, False)
                 self.ctrl_tabs.setTabEnabled(2, False)
                 self.ctrl_tabs.setTabEnabled(3, False)
             else:
-                self.btn_osc_live.setText("STOP Passive Oscillo")
+                self.btn_osc_live.setText(self.tr("STOP Passive Oscillo"))
                 self.btn_osc_live.setStyleSheet("background-color: #F44336; color: white; font-weight: bold; height: 35px;")
                 self.ctrl_tabs.setTabEnabled(0, False)
                 self.ctrl_tabs.setTabEnabled(1, False)
@@ -761,104 +1484,34 @@ class SignalAnalyzerApp(QMainWindow):
 
     # --- PROCESS REALTIME SERIAL / SIMULATOR DATA ---
     def process_live_data(self):
-        self.time_counter += 0.005
-        
+        if self._closing:
+            return
         if self.serial_conn and self.serial_conn.is_open:
-            # Query measurement result
-            res_str = self.serial_query("GET_RESULT\n")
-            if res_str.startswith("RESULT:"):
-                try:
-                    data = json.loads(res_str[7:])
-                    gain = data["gain_db"]
-                    phase = data["phase_deg"]
-                    vin_vpp = data["vin_vpp"]
-                    vout_vpp = data["vout_vpp"]
-                    if "range_name" in data and "range_mode" in data:
-                        self.lbl_range_status.setText(
-                            f"{data['range_mode']} / {data['range_name']}"
-                        )
-                    
-                    if self.current_live_mode == 'ANALYZER':
-                        self.lbl_ana_gain.setText(f"{gain:.2f} dB")
-                        self.lbl_ana_phase.setText(f"{phase:.2f} °")
-                        
-                        # Evaluate PASS / FAIL
-                        target = self.spin_target_gain.value()
-                        tol = self.spin_tol_gain.value()
-                        if abs(gain - target) <= tol:
-                            self.lbl_pf_status.setText("STATUS: PASS")
-                            self.lbl_pf_status.setStyleSheet("font-size: 18px; font-weight: bold; color: #4CAF50; qproperty-alignment: AlignCenter;")
-                        else:
-                            self.lbl_pf_status.setText("STATUS: FAIL (OutOfTolerance)")
-                            self.lbl_pf_status.setStyleSheet("font-size: 18px; font-weight: bold; color: #FF5252; qproperty-alignment: AlignCenter;")
-                except Exception as e:
-                    print(f"Result parse err: {e}")
-            
-            # Query binary raw samples
-            try:
-                self.serial_conn.write(b"GET_SAMPLES\n")
-                
-                # Parse binary custom frame format:
-                # Header: 0xAA 0xBB (2 bytes)
-                # Type: 0x03 (1 byte)
-                # Length: uint16 (2 bytes, Big Endian)
-                hdr = self.serial_conn.read(2)
-                if hdr == b"\xaa\xbb":
-                    frame_type = ord(self.serial_conn.read(1))
-                    length_bytes = self.serial_conn.read(2)
-                    length = (length_bytes[0] << 8) | length_bytes[1]
-                    
-                    payload = self.serial_conn.read(length)
-                    crc = ord(self.serial_conn.read(1))
-                    
-                    # Unpack payload as interleaved uint16
-                    raw_data = np.frombuffer(payload, dtype='>u2') # big endian uint16
-                    if len(raw_data) >= 2:
-                        ch1_raw = raw_data[0::2]
-                        ch2_raw = raw_data[1::2]
-                        
-                        # Convert to physical voltage (-1.65 to 1.65V)
-                        ch1 = (ch1_raw / 4095.0) * 3.3 - 1.65
-                        ch2 = (ch2_raw / 4095.0) * 3.3 - 1.65
-                        
-                        fs = self.ana_spin_fs.value()
-                        t = np.arange(0, len(ch1)) / fs
-                        
-                        self.curve_ch1.setData(t, ch1)
-                        self.curve_ch2.setData(t, ch2)
-                        
-                        # Save local copy for exporting
-                        self.last_raw_ch1 = ch1
-                        self.last_raw_ch2 = ch2
-                        self.last_raw_time = t
-            except Exception as e:
-                print(f"Error reading binary samples: {e}")
-                
+            # Do not replace the object until its finished handler clears it.
+            # isRunning() may already be false while the queued finished signal
+            # is still pending, which previously deleted the next live worker.
+            if self.capture_worker is not None:
+                return
+            expected_samples = int(self.ana_combo_samples.currentText())
+            worker = LiveCaptureWorker(self.serial_conn, expected_samples)
+            self.capture_worker = worker
+            worker.capture_ready.connect(self.handle_hardware_capture)
+            worker.capture_error.connect(self.handle_capture_error)
+            worker.finished.connect(self.capture_finished)
+            worker.start()
+
         else:
             # SIMULATION MODE fallback
             if self.current_live_mode == 'ANALYZER':
                 freq = self.ana_spin_freq.value()
-                t, ch1, ch2, _ = generate_analyzer_signals(freq, self.ana_spin_amp.value(), 5.0, 0.8, -25.0, self.time_counter)
-                gain, phase = analyze_active(t, ch1, ch2, freq)
-                
-                self.lbl_ana_gain.setText(f"{gain:.2f} dB")
-                self.lbl_ana_phase.setText(f"{phase:.2f} °")
-                
-                # Evaluate PASS / FAIL
-                target = self.spin_target_gain.value()
-                tol = self.spin_tol_gain.value()
-                if abs(gain - target) <= tol:
-                    self.lbl_pf_status.setText("STATUS: PASS")
-                    self.lbl_pf_status.setStyleSheet("font-size: 18px; font-weight: bold; color: #4CAF50; qproperty-alignment: AlignCenter;")
-                else:
-                    self.lbl_pf_status.setText("STATUS: FAIL (OutOfTolerance)")
-                    self.lbl_pf_status.setStyleSheet("font-size: 18px; font-weight: bold; color: #FF5252; qproperty-alignment: AlignCenter;")
-                
-                self.curve_ch1.setData(t, ch1)
-                self.curve_ch2.setData(t, ch2)
-                self.last_raw_ch1 = ch1
-                self.last_raw_ch2 = ch2
-                self.last_raw_time = t
+                fs = self.ana_spin_fs.value()
+                sample_count = int(self.ana_combo_samples.currentText())
+                t, ch1, ch2 = generate_configured_signals(
+                    freq, self.ana_spin_amp.value(), self.ana_spin_offset.value(),
+                    fs, sample_count, time_offset=self.time_counter,
+                )
+                self.time_counter += sample_count / fs
+                self.handle_samples(t, ch1, ch2)
                 
             elif self.current_live_mode == 'PASSIVE':
                 t, ch1, ch2, _ = generate_external_signals(
@@ -880,11 +1533,173 @@ class SignalAnalyzerApp(QMainWindow):
                 self.last_raw_ch2 = ch2
                 self.last_raw_time = t
 
+    def capture_finished(self):
+        worker = self.sender()
+        if self.capture_worker is worker:
+            self.capture_worker = None
+        if worker is not None:
+            worker.deleteLater()
+        if (not self._closing and self.pending_device_stop and
+                self.serial_conn and self.serial_conn.is_open):
+            self.pending_device_stop = False
+            self.serial_send_cmd("STOP\n")
+
+    def handle_capture_error(self, message):
+        if self._closing:
+            return
+        self.live_timer.stop()
+        self.last_communication_ok = False
+        self.last_data_complete = False
+        self.last_communication_error = message
+        self.btn_ana_live.setText(self.tr("Start Test"))
+        self.btn_osc_live.setText(self.tr("Start Passive Oscillo (RX Only)"))
+        for index in range(self.ctrl_tabs.count()):
+            self.ctrl_tabs.setTabEnabled(index, True)
+        self.lbl_pf_status.setText(
+            "TRẠNG THÁI: LỖI / TRUYỀN THÔNG"
+            if self.language == "vi" else "STATUS: FAIL / COMMUNICATION"
+        )
+        self.lbl_pf_status.setStyleSheet(
+            "font-size: 18px; font-weight: bold; color: #FF5252; "
+            "qproperty-alignment: AlignCenter;"
+        )
+        self.dut_table.setItem(7, 1, QTableWidgetItem(f"ERROR: {message}"))
+
+    def active_range_index(self, device_result=None):
+        if device_result and "range" in device_result:
+            return max(0, min(2, int(device_result["range"])))
+        text = self.lbl_range_status.text()
+        if "0.3V" in text:
+            return 0
+        if "3.3V" in text:
+            return 1
+        return 2
+
+    def calibration_value(self, key, fallback):
+        try:
+            return float(self.calibration_fields[key].text())
+        except (KeyError, ValueError):
+            return fallback
+
+    def handle_hardware_capture(self, capture):
+        device_result = capture.get("device_result") or {}
+        if "range_name" in device_result and "range_mode" in device_result:
+            self.lbl_range_status.setText(
+                f"{device_result['range_mode']} / {device_result['range_name']}"
+            )
+        range_index = self.active_range_index(device_result)
+        ch1_raw = capture["ch1_raw"]
+        ch2_raw = capture["ch2_raw"]
+        ch1 = raw_adc_to_volts(
+            ch1_raw,
+            self.calibration_value(f"adc1_r{range_index}_m", 1.0),
+            self.calibration_value(f"adc1_r{range_index}_c", 0.0),
+        )
+        ch2 = raw_adc_to_volts(
+            ch2_raw,
+            self.calibration_value(f"adc2_r{range_index}_m", 1.0),
+            self.calibration_value(f"adc2_r{range_index}_c", 0.0),
+        )
+        fs = self.ana_spin_fs.value()
+        t = np.arange(ch1.size, dtype=np.float64) / fs
+        self.last_communication_ok = True
+        self.last_data_complete = True
+        self.last_communication_error = ""
+        self.handle_samples(t, ch1, ch2, ch1_raw, ch2_raw)
+
+    def handle_samples(self, t, ch1, ch2, ch1_raw=None, ch2_raw=None):
+        fs = self.ana_spin_fs.value()
+        target_frequency = self.ana_spin_freq.value()
+        self.update_error_metrics()
+        ch1_metrics = analyze_channel(ch1, fs, target_frequency, ch1_raw)
+        ch2_metrics = analyze_channel(ch2, fs, target_frequency, ch2_raw)
+        dut = analyze_dut(
+            ch1_metrics, ch2_metrics,
+            self.spin_target_gain.value(), self.spin_tol_gain.value(),
+            target_frequency,
+        )
+        evaluation = evaluate_pass_fail(
+            self.last_sampling_quality, ch1_metrics, ch2_metrics, dut,
+            target_frequency,
+            frequency_tolerance_pct=self.spin_tol_freq.value(),
+            target_amplitude_vpeak=self.ana_spin_amp.value(),
+            amplitude_tolerance_pct=self.spin_tol_amp.value(),
+            communication_ok=self.last_communication_ok,
+            data_complete=self.last_data_complete,
+        )
+        self.last_ch1_metrics = ch1_metrics
+        self.last_ch2_metrics = ch2_metrics
+        self.last_dut_metrics = dut
+        self.last_evaluation = evaluation
+        self.last_raw_ch1 = np.asarray(ch1)
+        self.last_raw_ch2 = np.asarray(ch2)
+        self.last_raw_time = np.asarray(t)
+        self.curve_ch1.setData(t, ch1)
+        self.curve_ch2.setData(t, ch2)
+        plot_title = "Dạng sóng theo thời gian" if self.language == "vi" else "Time Domain Waveform"
+        clipping_text = " — CẢNH BÁO CLIPPING" if self.language == "vi" else " — CLIPPING WARNING"
+        self.plot_osc.setTitle(
+            plot_title + (clipping_text if ch1_metrics.clipping or ch2_metrics.clipping else "")
+        )
+        if dut.gain_db is not None:
+            self.lbl_ana_gain.setText(f"{dut.gain_db:.2f} dB")
+        self.lbl_ana_phase.setText(
+            f"{dut.phase_shift_deg:.2f} °" if dut.phase_shift_deg is not None
+            else self.tr("Not available")
+        )
+        status_colors = {"PASS": "#4CAF50", "WARNING": "#FFB300", "FAIL": "#FF5252"}
+        status_prefix = "TRẠNG THÁI" if self.language == "vi" else "STATUS"
+        self.lbl_pf_status.setText(f"{status_prefix}: {evaluation.status}")
+        self.lbl_pf_status.setStyleSheet(
+            f"font-size: 18px; font-weight: bold; color: {status_colors[evaluation.status]}; "
+            "qproperty-alignment: AlignCenter;"
+        )
+        self.update_measurement_tables()
+
+    def format_optional(self, value, suffix="", digits=3):
+        return self.tr("Not available") if value is None else f"{value:.{digits}f}{suffix}"
+
+    def update_measurement_tables(self):
+        c1, c2 = self.last_ch1_metrics, self.last_ch2_metrics
+        if c1 is None or c2 is None:
+            return
+        rows = [
+            (c1.vmax, c2.vmax, " V"), (c1.vmin, c2.vmin, " V"),
+            (c1.vpp, c2.vpp, " V"), (c1.vpeak, c2.vpeak, " V"),
+            (c1.vrms_ac, c2.vrms_ac, " V"), (c1.vmean, c2.vmean, " V"),
+            (c1.frequency_hz, c2.frequency_hz, " Hz"),
+            (c1.period_us, c2.period_us, " µs"),
+            (c1.noise_rms, c2.noise_rms, " V"),
+        ]
+        for row, (value1, value2, suffix) in enumerate(rows):
+            self.channel_table.setItem(row, 1, QTableWidgetItem(self.format_optional(value1, suffix)))
+            self.channel_table.setItem(row, 2, QTableWidgetItem(self.format_optional(value2, suffix)))
+        self.channel_table.setItem(9, 1, QTableWidgetItem(
+            f"{'YES' if c1.clipping else 'No'} / {'SAT' if c1.saturation else 'No saturation'}"
+        ))
+        self.channel_table.setItem(9, 2, QTableWidgetItem(
+            f"{'YES' if c2.clipping else 'No'} / {'SAT' if c2.saturation else 'No saturation'}"
+        ))
+        dut, evaluation = self.last_dut_metrics, self.last_evaluation
+        values = [
+            self.format_optional(dut.gain_linear, " x"),
+            self.format_optional(dut.gain_db, " dB"),
+            f"{dut.target_gain_db:.3f} dB",
+            self.format_optional(dut.gain_error_db, " dB"),
+            f"±{dut.gain_tolerance_db:.3f} dB",
+            self.format_optional(dut.phase_shift_deg, " °"),
+            self.format_optional(dut.delay_us, " µs"),
+            "OK" if self.last_communication_ok else f"ERROR: {self.last_communication_error}",
+            f"{evaluation.status}: {', '.join(evaluation.reasons)}",
+        ]
+        for row, value in enumerate(values):
+            self.dut_table.setItem(row, 1, QTableWidgetItem(value))
+
     # --- SWEEP BODE ---
     def run_sweep(self):
         self.view_tabs.setCurrentIndex(1) 
         if self.serial_conn and self.serial_conn.is_open and not self.apply_range_config():
-            QMessageBox.critical(self, "Error", "Failed to configure the ADC input range.")
+            QMessageBox.critical(self, self.tr("Error"), self.tr("Failed to configure the ADC input range."))
             return
         self.btn_sweep.setEnabled(False)
         self.worker = SweepWorker(
@@ -902,9 +1717,67 @@ class SignalAnalyzerApp(QMainWindow):
         self.curve_bode_phase.setData(freqs, phases)
 
     # --- CALIBRATION INTERFACE METHODS ---
+    def set_calibration_status(self, status):
+        self.calibration_status = status
+        self.lbl_calib_status.setText(self.tr(status))
+        colors = {
+            "default": "#FFB74D",
+            "loaded from device": "#4CAF50",
+            "loaded from JSON": "#4CAF50",
+            "saved to device": "#4CAF50",
+            "modified but not saved": "#FF5252",
+        }
+        self.lbl_calib_status.setStyleSheet(
+            f"color: {colors.get(status, '#FFB74D')}; font-weight: bold;"
+        )
+
+    def mark_calibration_modified(self, _text=""):
+        self.set_calibration_status("modified but not saved")
+
+    def calibration_dict(self):
+        values = {}
+        for key, field in self.calibration_fields.items():
+            values[key] = float(field.text())
+        return values
+
+    def export_calibration_json(self):
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export Calibration", "calibration.json", "JSON Files (*.json)"
+        )
+        if not path:
+            return
+        try:
+            with open(path, "w", encoding="utf-8") as file:
+                json.dump({
+                    "format": "signal-analyzer-calibration-v1",
+                    "status": self.calibration_status,
+                    "coefficients": self.calibration_dict(),
+                }, file, indent=2)
+        except (OSError, ValueError) as exc:
+            QMessageBox.critical(self, self.tr("Export Error"), str(exc))
+
+    def import_calibration_json(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import Calibration", "", "JSON Files (*.json)"
+        )
+        if not path:
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as file:
+                data = json.load(file)
+            coefficients = data.get("coefficients", data)
+            missing = set(self.calibration_fields) - set(coefficients)
+            if missing:
+                raise ValueError(f"Missing calibration keys: {sorted(missing)}")
+            for key, field in self.calibration_fields.items():
+                field.setText(f"{float(coefficients[key]):.6f}")
+            self.set_calibration_status("loaded from JSON")
+        except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+            QMessageBox.critical(self, self.tr("Import Error"), str(exc))
+
     def read_calibration_from_device(self):
         if not self.serial_conn or not self.serial_conn.is_open:
-            QMessageBox.warning(self, "Warning", "Device is not connected.")
+            QMessageBox.warning(self, self.tr("Warning"), self.tr("Device is not connected."))
             return
             
         res = self.serial_query("GET_CALIB\n")
@@ -914,25 +1787,14 @@ class SignalAnalyzerApp(QMainWindow):
                 kv = p.split('=')
                 if len(kv) == 2:
                     k, v = kv[0], kv[1]
-                    if k == "dac_x2_a": self.cal_dac_a.setText(v)
-                    elif k == "dac_x2_b": self.cal_dac_b.setText(v)
-                    elif k == "adc1_r0_m": self.cal_adc1_m0.setText(v)
-                    elif k == "adc1_r0_c": self.cal_adc1_c0.setText(v)
-                    elif k == "adc1_r1_m": self.cal_adc1_m1.setText(v)
-                    elif k == "adc1_r1_c": self.cal_adc1_c1.setText(v)
-                    elif k == "adc1_r2_m": self.cal_adc1_m2.setText(v)
-                    elif k == "adc1_r2_c": self.cal_adc1_c2.setText(v)
-                    elif k == "adc2_r0_m": self.cal_adc2_m0.setText(v)
-                    elif k == "adc2_r0_c": self.cal_adc2_c0.setText(v)
-                    elif k == "adc2_r1_m": self.cal_adc2_m1.setText(v)
-                    elif k == "adc2_r1_c": self.cal_adc2_c1.setText(v)
-                    elif k == "adc2_r2_m": self.cal_adc2_m2.setText(v)
-                    elif k == "adc2_r2_c": self.cal_adc2_c2.setText(v)
-            QMessageBox.information(self, "Success", "Calibration read successfully from hardware Flash!")
+                    if k in self.calibration_fields:
+                        self.calibration_fields[k].setText(v)
+            self.set_calibration_status("loaded from device")
+            QMessageBox.information(self, self.tr("Success"), self.tr("Calibration read successfully from hardware Flash!"))
 
     def write_calibration_to_device(self):
         if not self.serial_conn or not self.serial_conn.is_open:
-            QMessageBox.warning(self, "Warning", "Device is not connected.")
+            QMessageBox.warning(self, self.tr("Warning"), self.tr("Device is not connected."))
             return
             
         # Send calibration coefficients one by one
@@ -956,13 +1818,14 @@ class SignalAnalyzerApp(QMainWindow):
         success &= self.serial_send_cmd("SAVE_CALIB\n")
         
         if success:
-            QMessageBox.information(self, "Success", "Calibration coefficients saved into hardware Flash!")
+            self.set_calibration_status("saved to device")
+            QMessageBox.information(self, self.tr("Success"), self.tr("Calibration coefficients saved into hardware Flash!"))
         else:
-            QMessageBox.critical(self, "Error", "Failed to save calibration coefficients to device.")
+            QMessageBox.critical(self, self.tr("Error"), self.tr("Failed to save calibration coefficients to device."))
 
     def reset_calibration_device(self):
         if not self.serial_conn or not self.serial_conn.is_open:
-            QMessageBox.warning(self, "Warning", "Device is not connected.")
+            QMessageBox.warning(self, self.tr("Warning"), self.tr("Device is not connected."))
             return
             
         if self.serial_send_cmd("RESET_CALIB\n") and self.serial_send_cmd("SAVE_CALIB\n"):
@@ -980,61 +1843,104 @@ class SignalAnalyzerApp(QMainWindow):
             self.cal_adc2_c1.setText("0.000000")
             self.cal_adc2_m2.setText("100.000000")
             self.cal_adc2_c2.setText("0.000000")
-            QMessageBox.information(self, "Success", "Calibration reset to defaults and saved to Flash.")
+            self.set_calibration_status("default")
+            QMessageBox.information(self, self.tr("Success"), self.tr("Calibration reset to defaults and saved to Flash."))
 
     # --- REPORT EXPORTS ---
     def export_report(self):
         if len(self.last_raw_ch1) == 0:
-            QMessageBox.warning(self, "Warning", "No raw wave data available to export. Run a live test first.")
+            QMessageBox.warning(self, self.tr("Warning"), self.tr("No raw wave data available to export. Run a live test first."))
             return
             
-        # Export CSV Raw samples
         try:
+            timestamp = datetime.now(timezone.utc).astimezone().isoformat()
             csv_path = "amplifier_test_samples.csv"
-            with open(csv_path, mode='w', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow(["Time (s)", "CH1 Vin (V)", "CH2 Vout (V)"])
-                for i in range(len(self.last_raw_ch1)):
-                    writer.writerow([self.last_raw_time[i], self.last_raw_ch1[i], self.last_raw_ch2[i]])
+            exported_paths = []
+            if self.chk_export_raw.isChecked():
+                with open(csv_path, mode='w', newline='', encoding="utf-8") as f:
+                    writer = csv.writer(f)
+                    writer.writerow(["Time (s)", "CH1 Vin (V)", "CH2 Vout (V)"])
+                    for i in range(len(self.last_raw_ch1)):
+                        writer.writerow([self.last_raw_time[i], self.last_raw_ch1[i], self.last_raw_ch2[i]])
+                exported_paths.append(csv_path)
             
-            # Export JSON summary report
             summary_path = "amplifier_test_summary.json"
             summary_data = {
                 "tester": "PyQt6 Signal Analyzer Pro",
-                "frequency_hz": self.ana_spin_freq.value(),
-                "fs_sps": self.ana_spin_fs.value(),
-                "samples_per_cycle": float(self.lbl_samples_cycle.text()),
-                "est_peak_sampling_error": self.lbl_peak_err.text(),
-                "est_zoh_droop": self.lbl_zoh_droop.text(),
-                "gain_db": self.lbl_ana_gain.text(),
-                "phase_deg": self.lbl_ana_phase.text(),
-                "status": self.lbl_pf_status.text()
+                "timestamp": timestamp,
+                "device_info": self.device_info,
+                "waveform_config": {
+                    "waveform_type": self.ana_combo_wave.currentText(),
+                    "target_frequency_hz": self.ana_spin_freq.value(),
+                    "target_amplitude_vpeak": self.ana_spin_amp.value(),
+                    "target_offset_v": self.ana_spin_offset.value(),
+                    "dac_gain": "X1" if self.ana_combo_gain.currentIndex() == 0 else "X2",
+                    "adc_input_range": self.lbl_range_status.text(),
+                    "sample_rate_sps": self.ana_spin_fs.value(),
+                    "capture_samples": int(self.ana_combo_samples.currentText()),
+                },
+                "sampling_quality": self.last_sampling_quality.to_dict() if self.last_sampling_quality else None,
+                "ch1_metrics": self.last_ch1_metrics.to_dict() if self.last_ch1_metrics else None,
+                "ch2_metrics": self.last_ch2_metrics.to_dict() if self.last_ch2_metrics else None,
+                "dut_metrics": self.last_dut_metrics.to_dict() if self.last_dut_metrics else None,
+                "evaluation": self.last_evaluation.to_dict() if self.last_evaluation else None,
+                "communication": {
+                    "ok": self.last_communication_ok,
+                    "data_complete": self.last_data_complete,
+                    "last_error": self.last_communication_error,
+                },
+                "calibration": {
+                    "status": self.calibration_status,
+                    "coefficients": self.calibration_dict(),
+                },
             }
-            with open(summary_path, mode='w') as fj:
+            if self.chk_export_raw.isChecked():
+                summary_data["raw_samples"] = {
+                    "time_s": self.last_raw_time.tolist(),
+                    "ch1_v": self.last_raw_ch1.tolist(),
+                    "ch2_v": self.last_raw_ch2.tolist(),
+                }
+            with open(summary_path, mode='w', encoding="utf-8") as fj:
                 json.dump(summary_data, fj, indent=4)
-                
-            QMessageBox.information(self, "Export Successful", f"Saved raw data to: {csv_path}\nSaved summary details to: {summary_path}")
+            exported_paths.append(summary_path)
+            QMessageBox.information(
+                self, self.tr("Export Successful"),
+                ("Đã lưu:\n" if self.language == "vi" else "Saved:\n")
+                + "\n".join(exported_paths),
+            )
         except Exception as e:
-            QMessageBox.critical(self, "Export Error", f"Failed to save reports.\nDetails: {e}")
+            message = (
+                f"Không thể lưu báo cáo.\nChi tiết: {e}"
+                if self.language == "vi" else f"Failed to save reports.\nDetails: {e}"
+            )
+            QMessageBox.critical(self, self.tr("Export Error"), message)
+
+    def closeEvent(self, event):
+        self._closing = True
+        self.live_timer.stop()
+        if self.capture_worker and self.capture_worker.isRunning():
+            try:
+                self.serial_conn.cancel_read()
+            except (AttributeError, OSError):
+                pass
+            # Serial timeout is 5 s; never destroy a running QThread.
+            if not self.capture_worker.wait(6000):
+                self._closing = False
+                event.ignore()
+                return
+        if self.serial_conn and self.serial_conn.is_open:
+            try:
+                self.serial_conn.write(b"STOP\n")
+                self.serial_conn.flush()
+            except Exception:
+                pass
+            self.serial_conn.close()
+        event.accept()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
-    
-    # Custom premium Dark Style Sheets
-    app.setStyleSheet("""
-        QMainWindow { background-color: #121212; }
-        QWidget { color: #E0E0E0; font-family: 'Outfit', 'Inter', sans-serif; font-size: 12px; }
-        QGroupBox { font-weight: bold; border: 1px solid #2D2D2D; border-radius: 6px; margin-top: 10px; padding-top: 10px; }
-        QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 3px 0 3px; }
-        QPushButton { border: 1px solid #3A3A3A; border-radius: 4px; padding: 6px 12px; min-height: 20px; background-color: #1E1E1E; }
-        QPushButton:hover { background-color: #2D2D2D; border-color: #4A4A4A; }
-        QDoubleSpinBox, QComboBox, QLineEdit { border: 1px solid #2D2D2D; border-radius: 4px; padding: 4px; background-color: #181818; selection-background-color: #333; }
-        QTabWidget::pane { border: 1px solid #2D2D2D; background-color: #121212; }
-        QTabBar::tab { background: #1E1E1E; border: 1px solid #2D2D2D; padding: 6px 12px; border-top-left-radius: 4px; border-top-right-radius: 4px; }
-        QTabBar::tab:selected { background: #121212; border-bottom-color: #121212; }
-    """)
-    
+
     window = SignalAnalyzerApp()
     window.show()
     sys.exit(app.exec())

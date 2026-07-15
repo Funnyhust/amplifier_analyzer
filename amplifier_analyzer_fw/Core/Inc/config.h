@@ -24,9 +24,11 @@
  * @brief Cấu hình thông số phụ trợ cho các chế độ Test
  */
 #if (ACTIVE_MODE == MODE_TEST_DAC)
-  #define TEST_DAC_FREQUENCY   1000   // Tần số sóng Sine dùng để test DAC (Hz)
-  #define TEST_DAC_AMPLITUDE   1000   // Biên độ áp test DAC (mV)
-  #define TEST_DAC_GAIN        1      // Hệ số khuếch đại DAC (1: X1, 2: X2)
+  #define TEST_DAC_FREQUENCY_HZ       50U
+  #define TEST_DAC_UPDATE_RATE_HZ     1000U
+  #define TEST_DAC_POINTS_PER_CYCLE   20U
+  #define TEST_DAC_CENTER_CODE        1650U
+  #define TEST_DAC_AMPLITUDE_CODE     300U
 #endif
 
 #if (ACTIVE_MODE == MODE_TEST_ADC)
@@ -37,5 +39,15 @@
  * @brief Các cấu hình phần cứng khác
  */
 #define DAC_SETTLING_DELAY_CYCLES  40   // Số chu kỳ delay rỗng chờ DAC ổn định điện áp (~4.5 us)
+
+/*
+ * The TX analog stage subtracts this bias from the unipolar MCP4822 output.
+ * Signal amplitude/offset received from the PC are expressed after that
+ * subtraction. Set to 0 only if the DAC is exposed as a unipolar output.
+ */
+#define DAC_OUTPUT_BIAS_MV          1650.0f
+
+/* ADS7861 internal reference; signed differential span is -VREF..+VREF. */
+#define ADS7861_VREF_MV             2500.0f
 
 #endif /* CONFIG_H */

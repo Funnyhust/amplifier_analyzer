@@ -1,26 +1,37 @@
 \documentclass[12pt,a4paper]{report}
 
-% --- CẤU HÌNH PHÔNG CHỮ & NGÔN NGỮ ---
+% ==================== CẤU HÌNH CHUNG ====================
 \usepackage{fontspec}
-\setmainfont{Times New Roman} 
-
-% --- CÁC GÓI LỆNH CẦN THIẾT ---
-\usepackage{amsmath}
-\usepackage{amsfonts}
-\usepackage{amssymb}
+\setmainfont{Times New Roman}
+\usepackage{amsmath,amsfonts,amssymb}
 \usepackage{graphicx}
-\usepackage{array}
-\usepackage{hyperref}
+\usepackage{array,longtable,tabularx}
+\usepackage{float}
+\usepackage{caption}
 \usepackage{geometry}
 \usepackage{tikz}
-
-% --- CẤU HÌNH TIÊU ĐỀ CHƯƠNG (Bỏ chữ Chapter, định dạng "1. TÊN CHƯƠNG") ---
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric}
 \usepackage{titlesec}
-\titleformat{\chapter}[hang]{\normalfont\LARGE\bfseries}{\thechapter.}{0.5em}{}
-\titlespacing*{\chapter}{0pt}{-10pt}{20pt}
-\setcounter{secnumdepth}{4} % Hiển thị số mục đến cấp 4 (Heading 4)
+\usepackage{enumitem}
+\usepackage{setspace}
+\usepackage{indentfirst}
+\usepackage[table]{xcolor}
+\usepackage{hyperref}
+\usepackage{url}
 
-% --- VIỆT HÓA CÁC TỪ KHÓA MẶC ĐỊNH ---
+\geometry{left=3cm,right=2cm,top=2.5cm,bottom=2.5cm}
+\onehalfspacing
+\setlength{\parindent}{1.27cm}
+\setlength{\parskip}{3pt}
+\setlist[itemize]{leftmargin=1.2cm,itemsep=2pt,topsep=3pt}
+\setlist[enumerate]{leftmargin=1.2cm,itemsep=2pt,topsep=3pt}
+\sloppy
+
+\titleformat{\chapter}[block]{\normalfont\LARGE\bfseries\centering}{\thechapter.}{0.5em}{}
+\titlespacing*{\chapter}{0pt}{-10pt}{20pt}
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{2}
+
 \renewcommand{\contentsname}{MỤC LỤC}
 \renewcommand{\listfigurename}{DANH MỤC HÌNH VẼ}
 \renewcommand{\listtablename}{DANH MỤC BẢNG BIỂU}
@@ -28,237 +39,577 @@
 \renewcommand{\figurename}{Hình}
 \renewcommand{\tablename}{Bảng}
 
-% Cấu hình lề trang theo chuẩn
-\geometry{left=3cm, right=2cm, top=2.5cm, bottom=2.5cm}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    citecolor=black,
+    urlcolor=blue,
+    pdftitle={Hệ thống phân tích tín hiệu khuếch đại},
+    pdfauthor={Nguyễn Duy Anh; Nguyễn Văn Dương}
+}
+
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\unit}[1]{\,\mathrm{#1}}
+\newcommand{\NA}{\textit{Không áp dụng}}
+\newcommand{\tableheadcolor}{\rowcolor{gray!18}}
+\setlength{\arrayrulewidth}{0.6pt}
+\renewcommand{\arraystretch}{1.2}
+\newcolumntype{Y}{>{\raggedleft\arraybackslash}X}
 
 \begin{document}
 
 % ==================== TRANG BÌA ====================
 \begin{titlepage}
-    \begin{tikzpicture}[remember picture, overlay]
-        \draw[line width=1.5pt] 
-            ([xshift=3cm,yshift=-2.5cm]current page.north west) 
-            rectangle 
+    \begin{tikzpicture}[remember picture,overlay]
+        \draw[line width=1.5pt]
+            ([xshift=3cm,yshift=-2.5cm]current page.north west)
+            rectangle
             ([xshift=-2cm,yshift=2.5cm]current page.south east);
     \end{tikzpicture}
 
     \begin{center}
         \vspace*{0.5cm}
-        \large \textbf{ĐẠI HỌC BÁCH KHOA HÀ NỘI} \\
-        \large \textbf{TRƯỜNG ĐIỆN - ĐIỆN TỬ}
-        
-        \vspace{2.5cm}
+        \large \textbf{ĐẠI HỌC BÁCH KHOA HÀ NỘI}\\
+        \large \textbf{TRƯỜNG ĐIỆN -- ĐIỆN TỬ}
+
+        \vspace{2.2cm}
         \Huge \textbf{BÁO CÁO}
-        
-        \vspace{2cm}
+
+        \vspace{1.5cm}
         \large \textbf{ĐỒ ÁN CHUYÊN NGÀNH II}
-        
-        \vspace{1.0cm}
-        {\Large \textbf{Nghiên cứu, thiết kế và chế tạo hệ thống phân tích đáp ứng tần số và đánh giá chất lượng mạch khuếch đại}}
-        
-        \vspace{2.5cm}
+
+        \vspace{1cm}
+        {\Large \textbf{NGHIÊN CỨU, THIẾT KẾ VÀ CHẾ TẠO\\[0.2cm]
+        HỆ THỐNG PHÂN TÍCH TÍN HIỆU KHUẾCH ĐẠI}}
+
+        \vspace{2.2cm}
         \begin{table}[h]
             \centering
             \large
             \renewcommand{\arraystretch}{1.3}
             \begin{tabular}{ll}
-                \textbf{Sinh viên thực hiện:} & Nguyễn Duy Anh – 20241652E \\
-                                             & Nguyễn Văn Dương – 20241713E \\[0.5cm]
-                \textbf{Người hướng dẫn:}     & TS. Đào Việt Hùng
+                \textbf{Sinh viên thực hiện:} & Nguyễn Duy Anh -- 20241652E \\
+                                               & Nguyễn Văn Dương -- 20241713E \\[0.5cm]
+                \textbf{GVHD:} & TS. Đào Việt Hùng
             \end{tabular}
         \end{table}
-        
+
         \vfill
-        \large Hà Nội, 4-2026
+        \large Hà Nội, 7--2026
         \vspace*{0.5cm}
     \end{center}
 \end{titlepage}
-% ===================================================
 
-% --- MỤC LỤC & CÁC DANH MỤC ---
+% ==================== PHẦN ĐẦU ====================
 \pagenumbering{roman}
-\tableofcontents
-\newpage
 
+\chapter*{LỜI CẢM ƠN}
+\addcontentsline{toc}{chapter}{LỜI CẢM ƠN}
+Nhóm sinh viên xin trân trọng cảm ơn TS. Đào Việt Hùng đã định hướng, góp ý chuyên môn và hỗ trợ nhóm trong suốt quá trình thực hiện đồ án. Những trao đổi về kiến trúc hệ thống đo, thiết kế phần cứng tương tự, lập trình nhúng và phương pháp trình bày kết quả đã giúp nhóm hoàn thiện sản phẩm theo hướng có khả năng kiểm chứng và mở rộng. Nhóm cũng xin cảm ơn các thầy cô Trường Điện -- Điện tử, Đại học Bách khoa Hà Nội đã cung cấp nền tảng kiến thức cần thiết về điện tử, vi điều khiển và xử lý tín hiệu số.
+
+Do phạm vi đề tài bao gồm cả phần cứng, firmware và phần mềm máy tính, báo cáo khó tránh khỏi những thiếu sót. Nhóm mong nhận được các ý kiến phản biện để tiếp tục hoàn thiện độ chính xác đo lường và khả năng ứng dụng của hệ thống.
+\clearpage
+
+\chapter*{TÓM TẮT ĐỒ ÁN}
+\addcontentsline{toc}{chapter}{TÓM TẮT ĐỒ ÁN}
+Đồ án trình bày quá trình nghiên cứu, thiết kế và chế tạo một hệ thống phân tích tín hiệu khuếch đại có khả năng phát tín hiệu thử, thu đồng thời điện áp vào và điện áp ra của thiết bị cần đo, truyền dữ liệu về máy tính và đánh giá chất lượng phép đo. Hệ thống sử dụng vi điều khiển STM32F103C8T6 làm bộ điều khiển trung tâm, DAC kép MCP4822 để tạo tín hiệu kích thích, ADC lấy mẫu đồng thời ADS7861 để thu hai kênh và USB CDC Full Speed để giao tiếp với máy tính.
+
+Firmware được xây dựng trên STM32 HAL và PlatformIO, bao gồm driver SPI cho DAC/ADC, điều khiển ba dải đo, hiệu chuẩn lưu trong Flash, bộ phân tích lệnh ASCII và giao thức truyền mẫu nhị phân có kiểm tra XOR. Ứng dụng Signal Analyzer Pro sử dụng Python, PyQt6, PyQtGraph, NumPy, SciPy và PySerial. Phần mềm cung cấp waveform, quét Bode, phân tích từng kênh, tính gain/phase/delay, đánh giá điều kiện lấy mẫu, phát hiện clipping/saturation và kết luận PASS/FAIL/WARNING. Luồng đọc USB chạy trên worker thread nhằm tránh khóa giao diện.
+
+Kết quả kiểm nghiệm cho thấy thiết bị được Windows nhận ổn định dưới dạng cổng COM, truyền nhận thành công 100/100 lệnh PING liên tiếp và nhận đúng frame 512 mẫu cho mỗi kênh với checksum hợp lệ. Với cấu hình điển hình $f=20\unit{kHz}$, $F_s=200\unit{kSPS}$, hệ thống xác định $N=10$ mẫu/chu kỳ, sai số bắt hụt đỉnh lý thuyết $4{,}894\%$, suy hao ZOH $1{,}637\%$ và biên thời gian xác lập DAC $0{,}50\unit{\mu s}$. Do đó kết quả đo được phân loại WARNING/POC thay vì PASS tuyệt đối, phản ánh đúng giới hạn vật lý của cấu hình đo.
+
+\textbf{Từ khóa:} STM32F103, MCP4822, ADS7861, USB CDC, signal analyzer, gain, phase, Bode, sine fitting.
+\clearpage
+
+\tableofcontents
+\clearpage
 \listoffigures
-\newpage
+\clearpage
+\listoftables
+\clearpage
 
 \chapter*{DANH MỤC TỪ VIẾT TẮT}
 \addcontentsline{toc}{chapter}{DANH MỤC TỪ VIẾT TẮT}
-\begin{table}[h]
-    \centering
-    \renewcommand{\arraystretch}{1.3}
-    \begin{tabular}{|p{3cm}|p{5cm}|p{5cm}|}
-        \hline
-        \textbf{Viết tắt} & \textbf{Dạng đầy đủ} & \textbf{Giải nghĩa} \\
-        \hline
-        ADC & Analog-to-Digital Converter & Bộ chuyển đổi tương tự sang số \\ \hline
-        DAC & Digital-to-Analog Converter & Bộ chuyển đổi số sang tương tự \\ \hline
-        DDS & Direct Digital Synthesis & Kỹ thuật tổng hợp tần số trực tiếp \\ \hline
-        DSP & Digital Signal Processing & Xử lý tín hiệu số \\ \hline
-        DUT & Device Under Test & Thiết bị/Khối mạch cần đo kiểm \\ \hline
-        FFT & Fast Fourier Transform & Phép biến đổi Fourier nhanh \\ \hline
-        GUI & Graphical User Interface & Giao diện người dùng đồ họa \\ \hline
-        MCU & Microcontroller Unit & Khối vi điều khiển \\ \hline
-    \end{tabular}
-\end{table}
-\newpage
+\begin{longtable}{|p{2.3cm}|p{4.7cm}|p{5.8cm}|}
+\hline
+\tableheadcolor\textbf{Viết tắt} & \textbf{Dạng đầy đủ} & \textbf{Giải nghĩa} \\ \hline
+\endfirsthead
+\hline
+\tableheadcolor\textbf{Viết tắt} & \textbf{Dạng đầy đủ} & \textbf{Giải nghĩa} \\ \hline
+\endhead
+ADC & Analog-to-Digital Converter & Bộ chuyển đổi tương tự sang số \\ \hline
+AFE & Analog Front-End & Mạch điều hòa tín hiệu tương tự \\ \hline
+CDC & Communications Device Class & Lớp thiết bị truyền thông USB \\ \hline
+DAC & Digital-to-Analog Converter & Bộ chuyển đổi số sang tương tự \\ \hline
+DSP & Digital Signal Processing & Xử lý tín hiệu số \\ \hline
+DUT & Device Under Test & Mạch hoặc thiết bị cần đo \\ \hline
+FFT & Fast Fourier Transform & Biến đổi Fourier nhanh \\ \hline
+FS & Full Speed & Chế độ USB tốc độ 12 Mbit/s \\ \hline
+GUI & Graphical User Interface & Giao diện người dùng đồ họa \\ \hline
+MCU & Microcontroller Unit & Vi điều khiển \\ \hline
+PMA & Packet Memory Area & Vùng nhớ gói tin USB của STM32F1 \\ \hline
+RMS & Root Mean Square & Giá trị hiệu dụng \\ \hline
+SPI & Serial Peripheral Interface & Giao tiếp ngoại vi nối tiếp \\ \hline
+SWD & Serial Wire Debug & Giao diện nạp và gỡ lỗi \\ \hline
+THD & Total Harmonic Distortion & Tổng méo hài \\ \hline
+USB & Universal Serial Bus & Chuẩn kết nối nối tiếp đa dụng \\ \hline
+ZOH & Zero-Order Hold & Cơ chế giữ mẫu bậc không \\ \hline
+\end{longtable}
+\clearpage
 
-% --- NỘI DUNG CHÍNH ---
+% ==================== NỘI DUNG ====================
 \pagenumbering{arabic}
 
 \chapter{MỞ ĐẦU}
-\section{Lý do chọn đề tài}
-Trong kỹ thuật điện tử, việc phân tích đặc tính đáp ứng tần số của mạch khuếch đại là vô cùng quan trọng. Khả năng đánh giá chính xác các tham số phân tích như hệ số khuếch đại thế (Gain) và độ lệch pha (Phase Shift) giúp cho các kĩ sư có cái nhìn trực quan về thiết kế mạch in hiện có. Tuy nhiên, các thiết bị Signal Analyzer chuyên dụng hiện trường thường có mức giá khá cao và đồ sộ. Do đó, đề tài "\textit{Nghiên cứu, thiết kế và chế tạo hệ thống phân tích đáp ứng tần số và đánh giá chất lượng mạch khuếch đại}" được nhóm đặt ra nhằm hướng tới việc nắm vững kỹ thuật, phát triển được một công cụ đo lường linh hoạt kết hợp giữa vi điều khiển nhúng với phần mềm tính toán. 
 
-\section{Mục tiêu nghiên cứu}
-Báo cáo này tập trung vào các mục tiêu thiết kế ban đầu sau:
+\section{Lý do lựa chọn đề tài}
+Đáp ứng biên độ và pha là hai đặc trưng cơ bản quyết định khả năng làm việc của một mạch khuếch đại. Trong quá trình học tập, thiết kế và sửa chữa mạch điện tử, người thực hiện thường cần đồng thời một nguồn phát tín hiệu, một dao động ký và công cụ xử lý số để xác định hệ số khuếch đại, độ lệch pha và băng thông. Các thiết bị thương mại đáp ứng tốt yêu cầu này nhưng chi phí tương đối cao, trong khi các giải pháp dựa trên vi điều khiển thường chỉ dừng ở hiển thị waveform và chưa đánh giá độ tin cậy của điều kiện đo.
+
+Từ nhu cầu đó, nhóm lựa chọn xây dựng một hệ thống tích hợp gồm phần cứng phát/thu, firmware điều khiển và ứng dụng máy tính. Ngoài việc hiển thị tín hiệu, hệ thống phải chỉ ra khi nào kết quả có thể tin cậy. Ví dụ, với tín hiệu $20\unit{kHz}$ và tốc độ lấy mẫu $200\unit{kSPS}$, mỗi chu kỳ chỉ có 10 mẫu; nếu chỉ dùng cực đại/cực tiểu, sai số bắt hụt đỉnh có thể gần $4{,}9\%$. Mặt khác, chu kỳ cập nhật DAC là $5\unit{\mu s}$, chỉ lớn hơn thời gian xác lập điển hình của MCP4822 khoảng $0{,}5\unit{\mu s}$. Vì vậy, một nhãn PASS không kèm cảnh báo sẽ tạo cảm giác chính xác giả tạo.
+
+\section{Mục tiêu của đề tài}
+Mục tiêu tổng quát là chế tạo một hệ thống phân tích tín hiệu khuếch đại có khả năng hoạt động độc lập với thiết bị đo chuyên dụng trong các bài thử cơ bản. Các mục tiêu cụ thể gồm:
 \begin{itemize}
-    \item Đề xuất kiến trúc phần cứng tích hợp vi điều khiển hiệu năng cao, trang bị bộ chuyển đổi tương tự - số (ADC) tin cậy nhằm xử lý khối lượng lớn dữ liệu.
-    \item Ứng dụng dải chuyển đổi DAC tĩnh trong vi điều khiển để tạo sóng kích thích. Thiết kế mạch giao tiếp Analog Front-End chuẩn mực sử dụng mạng phân áp tự động (Auto-Ranging) kết hợp dịch mức điện áp (DC Bias) nhằm tối ưu hóa sai số lượng tử của bộ ADC.
-    \item Phát triển phần mềm giao diện máy tính trực quan, hỗ trợ tính toán độ lệch pha, hệ số khuếch đại (Gain), biểu diễn đồ thị Bode và thực hiện phân tích phổ FFT dựa trên dữ liệu lấy mẫu.
+    \item Phát tín hiệu sine, square, triangle và DC với tần số, biên độ, offset và bit gain cấu hình được.
+    \item Thu đồng thời hai kênh $V_{in}$ và $V_{out}$ bằng ADC 12-bit, hỗ trợ ba dải đo $0{,}3\unit{V}$, $3{,}3\unit{V}$ và $10\unit{V}$.
+    \item Truyền lệnh và dữ liệu qua USB CDC, có cơ chế kiểm tra độ dài và tính toàn vẹn của frame.
+    \item Đo Vmax, Vmin, Vpp, RMS AC, offset, tần số, gain, phase, delay, noise residual, clipping và saturation.
+    \item Đánh giá điều kiện lấy mẫu, sai số DAC và đưa ra PASS/FAIL/WARNING rõ ràng.
+    \item Cho phép chạy simulation khi không có phần cứng, quản lý calibration và xuất báo cáo CSV/JSON.
 \end{itemize}
 
-\chapter{TỔNG QUAN VÀ KIẾN TRÚC HỆ THỐNG}
-\section{Kiến trúc tổng thể của hệ thống Analyzer}
-Dựa trên yêu cầu của thực tiễn đo tín hiệu, kiến trúc hệ thống đề xuất bao gồm 4 khối chức năng chính yếu sau đây:
+\section{Đối tượng và phạm vi nghiên cứu}
+Đối tượng nghiên cứu là các mạch khuếch đại điện áp làm việc với tín hiệu tuần hoàn trong dải thấp và trung bình, ưu tiên tín hiệu sine quanh $20\unit{kHz}$. Hệ thống tập trung vào phép đo hai kênh, đặc tuyến gain/phase và đáp ứng tần số. Các phép đo chuyên sâu như trở kháng vào/ra, CMRR, PSRR, THD+N chuẩn phòng thí nghiệm và công suất tải lớn nằm ngoài phạm vi chính.
+
+Phần cứng trung tâm là STM32F103C8T6, DAC MCP4822 và ADC ADS7861. Phần mềm desktop chạy trên Windows bằng Python/PyQt6. Báo cáo đánh giá cả chế độ simulation và phép thử truyền nhận trên bo mạch thật.
+
+\section{Phương pháp thực hiện}
+Đề tài được triển khai theo hướng chia hệ thống thành các lớp có thể kiểm thử độc lập. Phần cứng được phân thành chuỗi TX, DUT và chuỗi RX. Firmware được tách thành driver thiết bị, bộ điều khiển phép đo, giao thức và USB. Ứng dụng desktop tách phần giao diện, worker truyền thông và module phân tích tín hiệu. Mỗi lớp được kiểm tra trước khi ghép nối toàn hệ thống.
+
+Các công thức sai số được kiểm thử bằng unit test. Giao thức USB được thử bằng lệnh request/response, kiểm tra frame nhị phân và checksum. Kết quả đo được so sánh với tham số cấu hình chuẩn của bộ mô phỏng và DUT tham chiếu.
+
+\section{Bố cục báo cáo}
+Báo cáo gồm bảy chương. Chương 1 trình bày bài toán và mục tiêu. Chương 2 tổng hợp cơ sở lý thuyết. Chương 3 mô tả thiết kế hệ thống và phần cứng. Chương 4 trình bày firmware và giao thức. Chương 5 trình bày ứng dụng desktop và DSP. Chương 6 mô tả kiểm nghiệm, kết quả và thảo luận. Chương 7 tổng kết và đề xuất hướng phát triển.
+
+\chapter{TỔNG QUAN VÀ CƠ SỞ LÝ THUYẾT}
+
+\section{Tổng quan thiết bị phân tích mạch khuếch đại}
+Một bộ phân tích mạch khuếch đại cần tạo tín hiệu kích thích có tham số biết trước, đo đồng thời tín hiệu trước và sau DUT, sau đó suy ra các đặc tính truyền đạt. Khác với dao động ký chỉ hiển thị dạng sóng, bộ phân tích phải gắn kết kết quả với điều kiện đo, độ chính xác và tiêu chí nghiệm thu. Kiến trúc phổ biến gồm nguồn phát, AFE, ADC hai kênh, bộ xử lý và giao diện hiển thị.
+
+Giải pháp của đề tài sử dụng các linh kiện rời thay vì DAC/ADC nội của MCU. MCP4822 cung cấp hai kênh DAC 12-bit, tham chiếu nội và bit gain; ADS7861 cung cấp hai ADC 12-bit lấy mẫu đồng thời, phù hợp với phép đo pha vì giảm sai lệch thời điểm giữa hai kênh \cite{mcp4822,ads7861}. STM32F103 đảm nhiệm điều phối thời gian, SPI, USB và quản lý cấu hình \cite{stm32ds,stm32rm}.
+
+\section{Các thông số đánh giá bộ khuếch đại}
+Với hai chuỗi điện áp $v_{in}[n]$ và $v_{out}[n]$, giá trị trung bình và RMS thành phần AC được xác định bởi:
+\begin{align}
+\overline{v} &= \frac{1}{M}\sum_{n=0}^{M-1}v[n],\\
+V_{\mathrm{RMS,AC}} &= \sqrt{\frac{1}{M}\sum_{n=0}^{M-1}\left(v[n]-\overline{v}\right)^2}.
+\end{align}
+Sử dụng RMS AC giúp loại ảnh hưởng của offset DC và ít nhạy với việc bỏ lỡ đúng đỉnh hơn Vpp. Hệ số khuếch đại được tính theo:
+\begin{align}
+G_{lin} &= \frac{V_{out,\mathrm{RMS,AC}}}{V_{in,\mathrm{RMS,AC}}},\\
+G_{dB} &= 20\log_{10}(G_{lin}).
+\end{align}
+
+Để xác định phase, ứng dụng khớp tín hiệu với mô hình:
+\begin{equation}
+v(t)=A\sin(2\pi ft+\phi)+C+e(t),
+\end{equation}
+trong đó $A$ là biên độ, $C$ là offset và $e(t)$ là phần dư. Hiệu phase giữa hai kênh là $\Delta\phi=\phi_{out}-\phi_{in}$, được chuẩn hóa vào khoảng $[-180^\circ,180^\circ]$. Độ trễ tương đương:
+\begin{equation}
+\tau=\frac{\Delta\phi}{360^\circ f}.
+\end{equation}
+
+\section{Cơ sở lý thuyết lấy mẫu tín hiệu}
+Điều kiện Nyquist yêu cầu $F_s>2f_{max}$ để tránh chồng phổ \cite{oppenheim}. Tuy nhiên, thỏa mãn Nyquist chưa đồng nghĩa waveform có đủ điểm để đo peak và phase chính xác. Số mẫu trên mỗi chu kỳ là:
+\begin{equation}
+N=\frac{F_s}{f_{signal}}.
+\end{equation}
+Chu kỳ tín hiệu và khoảng thời gian giữa hai mẫu:
+\begin{equation}
+T_{signal}=\frac{10^6}{f_{signal}}\;[\mu s],\qquad
+T_s=\frac{10^6}{F_s}\;[\mu s].
+\end{equation}
+
+Trong trường hợp xấu nhất, điểm lấy mẫu gần đỉnh sine bị lệch nửa bước pha. Sai số peak lý thuyết được ước lượng:
+\begin{equation}
+E_{peak}=\left(1-\cos\frac{\pi}{N}\right)\times100\%.
+\end{equation}
+Đây là lý do ứng dụng ưu tiên RMS AC và sine fit, đồng thời vẫn hiển thị Vmax/Vmin để người dùng quan sát trực tiếp.
+
+\section{Đặc tính và sai số của ADC, DAC}
+DAC dạng bậc thang tương đương một bộ giữ mẫu bậc không. Suy hao biên độ chuẩn hóa tại tần số tín hiệu được xấp xỉ:
+\begin{equation}
+E_{ZOH}=\left(1-\frac{\sin(\pi/N)}{\pi/N}\right)\times100\%.
+\end{equation}
+MCP4822 có độ phân giải 12-bit và thời gian xác lập điển hình khoảng $4{,}5\unit{\mu s}$ \cite{mcp4822}. Biên thời gian xác lập được định nghĩa:
+\begin{equation}
+T_{margin}=T_s-T_{settling}.
+\end{equation}
+Nếu $T_{margin}<0$, mẫu DAC mới được cập nhật trước khi đầu ra ổn định; nếu $0\leq T_{margin}<1\unit{\mu s}$, phép phát được đánh giá borderline.
+
+Với ADC 12-bit, mã số nằm trong khoảng 0--4095. Sau khi trừ mức bias $1{,}65\unit{V}$ và áp dụng calibration cho từng dải đo, điện áp đầu vào được tính:
+\begin{equation}
+V_{in}=m_r\left(\frac{code}{4095}\cdot3{,}3-1{,}65\right)+c_r,
+\end{equation}
+trong đó $m_r$ và $c_r$ là hệ số scale/offset của range $r$. Các mã gần 0 hoặc 4095 được đánh dấu saturation.
+
+\section{Phương pháp đánh giá kết quả}
+Kết quả tổng thể không chỉ dựa trên gain. Hệ thống phân biệt ba trạng thái:
 \begin{itemize}
-    \item \textbf{Khối phát tín hiệu (TX):} Khai thác bộ DAC 12-bit nội bộ của STM32 kết hợp mạch lọc thông thấp (Reconstruction Filter) và mạch khuếch đại đệm nhằm loại bỏ hiện tượng răng cưa (Aliasing), cung cấp tín hiệu kích thích dạng hình sin có độ tuyến tính cao.
-    \item \textbf{Khối ghép nối và kiểm chuẩn (DUT):} Vị trí ghép nối điện trở đầu vào và đầu ra của mạch khuếch đại cần đo lường.
-    \item \textbf{Khối thu tín hiệu (RX - Data Acquisition):} Triển khai cấu trúc tự động điều chỉnh thang đo (Auto-Ranging PGA) sử dụng IC chuyển mạch tương tự (Analog Switch) và mạng điện trở. Cơ cấu này chuẩn hóa đa dạng biên độ tín hiệu đầu vào về dải điện áp $0.3\text{V} - 3.0\text{V}$, đồng thời tích cực bảo vệ ngõ vào vi điều khiển bằng diode kẹp áp (Clamping diode) nhằm ngăn chặn quá áp đột biến.
-    \item \textbf{Khối xử lý trung tâm (MCU):} Chịu trách nhiệm điều phối luồng dữ liệu, thực thi cơ cấu quét dải tần số liên tục, tổng hợp chuỗi mẫu qua bộ ADC nội và đồng bộ gói dữ liệu về giao diện máy tính cục bộ.
+    \item \textbf{PASS}: gain, tần số, biên độ đạt tolerance; không clipping/saturation; frame đầy đủ; điều kiện đo hợp lệ.
+    \item \textbf{FAIL}: ít nhất một yêu cầu kỹ thuật không đạt hoặc có lỗi truyền thông/mất dữ liệu.
+    \item \textbf{WARNING}: tín hiệu có thể đạt yêu cầu nhưng độ tin cậy bị giới hạn bởi số mẫu/chu kỳ, sai số peak hoặc biên xác lập DAC.
 \end{itemize}
+Quy tắc này ngăn trường hợp $N=10$ bị hiển thị PASS xanh tuyệt đối dù sai số peak lý thuyết gần $4{,}9\%$.
 
-\section{Nghiên cứu hạ tầng ADC / DAC}
-Việc lựa chọn sử dụng phần cứng trung gian ADC và DAC bắt buộc độ nhiễu loạn cực thấp. 
-Đối với \textbf{bộ thu ADC}, hệ thống đòi hỏi một cơ cấu lấy mẫu (Sampling) đủ tốc lớn để thỏa mãn định lý Nyquist cũng như bảo toàn biên dạng phần tử tần số cao mà không xảy ra méo mó, biến dạng khi chuyển qua digital.
+\chapter{THIẾT KẾ HỆ THỐNG}
 
-\chapter{THIẾT KẾ PHẦN CỨNG MẠCH ĐO}
-\section{Lựa chọn linh kiện}
-Với mục đích đáp ứng chu trình tốc độ cao trong xử lý tín hiệu thực, nhóm nghiên cứu đã lựa chọn các thành phần phần cứng tiêu chuẩn và tối ưu nhất cho hệ thống. Danh mục linh kiện chính được tổng hợp trong Bảng \ref{tab:bom}.
-
-\begin{table}[ht]
-    \centering
-    \caption{Danh mục linh kiện chủ chốt của hệ thống}
-    \label{tab:bom}
-    \renewcommand{\arraystretch}{1.3}
-    \begin{tabular}{|l|l|l|c|l|}
-        \hline
-        \textbf{STT} & \textbf{Tên linh kiện} & \textbf{Thông số / Mã hiệu} & \textbf{SL} & \textbf{Ghi chú / Vai trò} \\ \hline
-        1 & Vi điều khiển & STM32F407VET6 & 1 & 168MHz, 3xADC, 2xDAC \\ \hline
-        2 & Analog Switch & \textbf{TMUX1072} (TI) & 2 & SPDTx2, BW=200MHz, OVP \\ \hline
-        3 & Op-Amp RRIO & \textbf{TLV9001} / \textbf{LMV321} & 4 & Sallen-Key LPF, Bias, Buffer \\ \hline
-        4 & Schottky Diode & \textbf{BAT54} & 4 & Kẹp áp (Clamp) bảo vệ (Vf thấp) \\ \hline
-        5 & Ultra-low LDO & \textbf{TPS7A02} (TI) & 1 & Cấp nguồn riêng cho VDDA (Analog) \\ \hline
-        6 & Ferrite Bead & 600 $\Omega$ @ 100 MHz & 1 & Lọc nhiễu cao tần cho MCU \\ \hline
-        7 & Tụ điện C0G/NP0 & 10nF, 22pF & v.v & Bắt buộc cho lọc Sallen-Key \\ \hline
-        8 & Điện trở chính xác & 10k$\Omega$, 90k$\Omega$, 990k$\Omega$ & v.v & Sai số 1\% cho mạng phân áp \\ \hline
-        9 & Thạch anh & 8 MHz (HSE) & 1 & Nguồn xung nhịp ổn định cho MCU \\ \hline
-        10 & Giắc tín hiệu & BNC / USB Type-C & 3 & Kết nối tín hiệu và truyền dữ liệu \\ \hline
-    \end{tabular}
+\section{Yêu cầu kỹ thuật}
+Các yêu cầu chính của nguyên mẫu được tổng hợp trong Bảng \ref{tab:requirements}.
+\begin{table}[H]
+\centering
+\caption{Yêu cầu kỹ thuật chính của hệ thống}
+\label{tab:requirements}
+\begin{tabularx}{\textwidth}{|p{4.2cm}|X|}
+\hline
+\tableheadcolor\textbf{Hạng mục} & \textbf{Yêu cầu} \\ \hline
+Bộ xử lý & STM32F103C8T6, xung nhịp hệ thống $72\unit{MHz}$ \\ \hline
+Khối phát & DAC MCP4822 12-bit, SPI, gain X1/X2 \\ \hline
+Khối thu & ADS7861 12-bit, hai kênh lấy mẫu đồng thời \\ \hline
+Dải đo & Auto hoặc manual: $0{,}3\unit{V}$, $3{,}3\unit{V}$, $10\unit{V}$ \\ \hline
+Giao tiếp & USB CDC FS, cổng COM ảo trên Windows \\ \hline
+Độ dài capture & 512, 1024 hoặc 2048 cặp mẫu \\ \hline
+Chế độ đo & Single tone, waveform, passive oscilloscope, Bode sweep \\ \hline
+Kết quả & Channel metrics, DUT metrics và PASS/FAIL/WARNING \\ \hline
+Vận hành không thiết bị & Có chế độ simulation/mock \\ \hline
+\end{tabularx}
 \end{table}
 
-\begin{itemize}
-    \item \textbf{Vi điều khiển trung tâm (STM32F407VET6):} Việc sử dụng vi điều khiển STM32F407 cung cấp hiệu suất vượt trội thông qua kiến trúc ADC lấy mẫu đồng thì (Dual Simultaneous Mode). Chế độ này cho phép bộ ADC1 và ADC2 hoạt động song song tuyệt đối, lấy mẫu đồng thời hai kênh tín hiệu tham chiếu và tín hiệu phản hồi. Điều này giúp loại bỏ triệt để sai số pha do độ trễ thời gian lấy mẫu giữa các kênh, đảm bảo độ chính xác cho các thuật toán tính toán Magnitude và Phase tại tần số lên đến 500kHz.
-    \item \textbf{Cấu trúc Analog Front-End (AFE) mở rộng:} Phương pháp sử dụng phối hợp DAC 12-bit tích hợp sẵn cùng mạch lọc khôi phục tín hiệu (Reconstruction Filter) hỗ trợ loại trừ sai số tần số cao. Giải pháp này cải thiện độ ổn định và giảm thiểu tính phân mảnh của board mạch in (PCB) so với kiến trúc vi sai mô-đun SPI.
-    \item \textbf{Khối bảo vệ đầu vào và mạch dịch mức tuyến tính:} Tín hiệu tiếp nhận từ đối tượng đo lường được khống chế biên độ điện thế, theo sau là khối điều khiển Auto-ranging. Bằng sự thiết lập cố định cấu hình của khối Op-Amp hoạt động tạo dịch mức không đổi +1.65V DC, tín hiệu dao động được đối chiếu ổn định trong thiết kế cực hạn $0.3\text{V} - 3.0\text{V}$, tối ưu thông số sai mức lượng tử trên toàn đồ thị đo thực nghiệm.
-\end{itemize}
+\section{Kiến trúc tổng thể}
+Hình \ref{fig:system_arch} mô tả luồng thông tin và tín hiệu của hệ thống. Máy tính gửi cấu hình qua USB; STM32 điều khiển DAC tạo kích thích cho DUT; hai tín hiệu Vin và Vout được lấy mẫu đồng thời; dữ liệu thô quay lại desktop để phân tích.
 
-\section{Cấu trúc sơ đồ nguyên lý phần cứng}
-Thiết kế sơ đồ nguyên lý cơ sở bao quát trọn bộ cả hệ khối phát và khối thu...
-
-\textit{--- SẼ BỔ SUNG HÌNH ẢNH SCHEMATIC SAU KHI VẼ XONG TRONG GIAI ĐOẠN TỚI ---}
-
-
-\chapter{THIẾT KẾ PHẦN MỀM GIAO DIỆN (SOFTWARE \& DSP)}
-Bên cạnh phần lý thuyết linh kiện, giao diện lập trình điều khiển trên Desktop PC đóng vai trò cốt lõi trong việc trình bày trực quan và thực thi các thuật toán phân tích chuyên sâu.
-\section{Thiết kế Kiến trúc Giao diện UI/UX}
-Nền tảng phần mềm đã được cấu trúc hoàn chỉnh sử dụng thư viện PyQt6 và pyqtgraph bằng Python. Kiến trúc phần mềm tách biệt phân khu quản trị thông minh, cho phép thu gọn thành 2 chế độ (Mode) đo chính:
-\begin{itemize}
-    \item \textbf{Chế độ Single Tone / Passive Oscilloscope:} Nhận dữ liệu thu trực tiếp theo time-domain thời gian thực, đáp ứng khảo sát dạng sóng hiện thuần.
-    \item \textbf{Chế độ Network Analyzer (Bode Sweep):} Thực thi thuật toán Quét dải tần tự động, đưa thông số phản hồi về thành ma trận tính toán Bode (Đồ thị Magnitude/Phase).
-\end{itemize}
-
-\begin{figure}[htbp]
-    \centering
-    \includegraphics[width=0.9\textwidth]{images/app_desktop1.png}
-    \caption{Giao diện chính - Chế độ Trực quan dạng sóng và Phân tích phổ}
-    \label{fig:app_desktop1}
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    block/.style={draw,rounded corners,align=center,minimum height=1.3cm,text width=2.4cm,fill=blue!6},
+    arrow/.style={-{Latex[length=2.5mm]},thick},
+    node distance=9mm
+]
+\node[block] (pc) {PC\\Signal Analyzer Pro};
+\node[block,right=of pc] (mcu) {STM32F103\\USB + điều khiển};
+\node[block,right=of mcu] (dac) {MCP4822\\DAC 12-bit};
+\node[block,right=of dac] (dut) {DUT\\mạch khuếch đại};
+\node[block,below=1.5cm of dac] (adc) {AFE + ADS7861\\CH1 Vin, CH2 Vout};
+\draw[arrow,<->] (pc) -- node[above]{USB CDC} (mcu);
+\draw[arrow] (mcu) -- node[above]{SPI1} (dac);
+\draw[arrow] (dac) -- node[above]{TX} (dut);
+\draw[arrow] (dut.south) |- node[right,pos=0.25]{Vout} (adc.east);
+\draw[arrow] (dac.south) -- node[left]{Vin} (adc.north);
+\draw[arrow] (adc.west) -| node[below,pos=0.25]{SPI2} (mcu.south);
+\end{tikzpicture}
+\caption{Kiến trúc tổng thể của hệ thống phân tích tín hiệu}
+\label{fig:system_arch}
 \end{figure}
 
-\begin{figure}[htbp]
-    \centering
-    \includegraphics[width=0.9\textwidth]{images/app_desktop2.png}
-    \caption{Giao diện chính - Chế độ Quét dải tần và Đồ thị Bode}
-    \label{fig:app_desktop2}
-\end{figure}
+\section{Thiết kế khối phát tín hiệu}
+MCP4822 là DAC hai kênh 12-bit, giao tiếp SPI và có tham chiếu nội $2{,}048\unit{V}$. Word điều khiển 16-bit gồm bit chọn kênh, bit gain, bit shutdown và 12 bit dữ liệu \cite{mcp4822}. STM32 sử dụng SPI1; chân PA4 làm chip-select phần mềm và PA3 nối với LDAC. Firmware giữ LDAC ở mức thấp để đầu ra được cập nhật sau khi hoàn tất mỗi frame SPI. Driver đóng gói dữ liệu big-endian và giữ CS ở mức thấp trong toàn bộ hai byte truyền.
 
-\section{Xây dựng bộ DSP Core xử lý tín hiệu}
-Toàn bộ thuật toán lõi đã được xây dựng và mô phỏng xác thực bằng dữ liệu hệ đa phân kì tự sinh. Các thuật toán định danh bao gồm:
-\subsection{Thuật toán tính Hệ số khuếch đại (Gain Calculation)}
-Để hạn chế sai số quá lố (Outlier) sinh ra bởi nhiễu dạng Gauss trên đỉnh sóng (Peak), thuật toán được thiết kế chuyên sâu dùng thông số kỹ thuật RMS (Root Mean Square - Căn quân phương) làm quy chuẩn. Phương thức nội suy Gain dB giúp cho đường đo Bode trở nên cực mượt ngay cả khi tỉ lệ nhiễu vượt 2\%. 
-
-\subsection{Thuật toán Tương quan chéo đo Phase (Cross-Correlation)}
-Dự án thay thế phương pháp "Tìm điểm cắt gốc không" (Zero-crossing detector) truyền thống bằng thuật toán Tương quan chéo (Cross-correlation). Phép toán này đối sánh hai chuỗi tín hiệu $v_{in}[n]$ và $v_{out}[n]$ để tìm ra độ trễ thời gian $\tau$ tối ưu nhất:
+Firmware tạo bảng mẫu theo dạng sóng, tần số, biên độ và offset. Do MCP4822 là DAC đơn cực, firmware cộng mức bias $1{,}65\unit{V}$ trước khi mã hóa; tầng analog TX trừ lại mức này để thu được tín hiệu lưỡng cực quanh $0\unit{V}$. Hệ số hiệu chuẩn DAC X2 được mô tả bằng quan hệ tuyến tính $V=a\cdot code+b$; với X1, scale mV/code bằng một nửa X2. Mã phát được giới hạn trong khoảng 0--4095.
 \begin{equation}
-    R_{xy}[k] = \sum_{n} v_{in}[n] \cdot v_{out}[n+k]
+code=\mathrm{clip}\left(\frac{V_{signal}+V_{bias}-b}{a\,s_G},0,4095\right),
+\qquad s_G=\begin{cases}1,&G=\mathrm{X2}\\0{,}5,&G=\mathrm{X1}.\end{cases}
 \end{equation}
-Giá trị chỉ số $k$ ứng với $R_{xy}[k]$ cực đại chính là số mẫu trễ giữa hai tín hiệu. Từ đó, độ lệch pha $\Delta \phi$ được tính toán chính xác:
-\begin{equation}
-    \Delta \phi = \frac{k_{max}}{N} \times 360^\circ \times \frac{f}{f_s}
-\end{equation}
-Đặc trưng lớn của phương pháp này là khả năng loại bỏ nhiễu trắng và sai số tại các điểm cắt gốc không, đảm bảo kết quả đo pha ổn định ngay cả khi tín hiệu bị suy giảm biên độ mạnh hoặc có độ nhiễu cao.
+Đầu ra DAC được đưa qua buffer/lọc tái tạo trước khi cấp cho DUT. Khi lựa chọn tốc độ cập nhật, ứng dụng đồng thời tính ZOH droop và settling margin để cảnh báo người vận hành.
 
-\section{Giao thức truyền thông giữa Máy tính và Vi điều khiển}
-Để đảm bảo việc truyền tải dữ liệu tốc độ cao và tin cậy qua cổng USB CDC (Virtual COM Port), hệ thống sử dụng một giao thức đóng gói dữ liệu (Packetization) tùy chỉnh. Giao thức này giúp phân biệt các loại dữ liệu (dữ liệu sóng thời gian thực, dữ liệu quét Bode) và kiểm tra tính toàn vẹn của dữ liệu.
+\section{Thiết kế khối thu tín hiệu hai kênh}
+ADS7861 tích hợp hai ADC 12-bit và hỗ trợ lấy mẫu đồng thời, tốc độ tới $500\unit{kSPS}$ theo datasheet \cite{ads7861}. Thiết kế sử dụng Mode II: M0=0, M1=1; kết quả A và B được đọc tuần tự trên đường Serial Data A. PA8 tạo xung RD/CONVST, PB10 đọc BUSY và PB12 điều khiển CS. SPI2 nhận hai word 16-bit; firmware bỏ hai bit trạng thái đầu, hai bit cuối và giữ 12 bit dữ liệu.
 
-\subsection{Cấu trúc gói tin (Packet Structure)}
-Mỗi gói tin được bắt đầu bằng chuỗi định danh (Header) và kết thúc bằng mã kiểm tra (Checksum). Cấu trúc chi tiết của một gói tin được mô tả trong Bảng \ref{tab:protocol_structure}.
+Hai kênh được ghép vào một word 32-bit: CH1 ở 16 bit cao, CH2 ở 16 bit thấp. Cách lưu này cho phép buffer 2048 cặp mẫu chỉ chiếm $8192\unit{byte}$, phù hợp hơn so với hai mảng float trên STM32F103 có $20\unit{kB}$ SRAM.
 
-\begin{table}[ht]
-    \centering
-    \caption{Cấu trúc gói tin truyền thông}
-    \label{tab:protocol_structure}
-    \renewcommand{\arraystretch}{1.3}
-    \begin{tabular}{|l|c|l|}
-        \hline
-        \textbf{Trường dữ liệu} & \textbf{Kích thước} & \textbf{Mô tả} \\ \hline
-        \texttt{Header 1} & 1 byte & Giá trị cố định \texttt{0xAA} \\ \hline
-        \texttt{Header 2} & 1 byte & Giá trị cố định \texttt{0xBB} \\ \hline
-        \texttt{Frame Type} & 1 byte & Loại khung dữ liệu (OSC, Bode, ...) \\ \hline
-        \texttt{Payload Length} & 2 bytes & Độ dài phần dữ liệu (Big Endian) \\ \hline
-        \texttt{Payload} & $N$ bytes & Dữ liệu thực tế (Samples, Results) \\ \hline
-        \texttt{Checksum} & 1 byte & Mã kiểm tra XOR toàn bộ Payload \\ \hline
-    \end{tabular}
+\section{Mạch điều hòa và lựa chọn range}
+Tín hiệu lưỡng cực được bias quanh $1{,}65\unit{V}$ để phù hợp với dải ADC đơn cực. Ba nhánh range tương ứng mức trực tiếp, suy hao xấp xỉ 10 lần và 100 lần. Các relay được đóng theo cơ chế break-before-make để không kích hoạt đồng thời hai nhánh. Hệ thống khởi động ở dải $10\unit{V}$ nhằm bảo vệ ADC trước một tín hiệu chưa biết.
+
+Trong chế độ AUTO, firmware xác định khoảng cách lớn nhất từ mã giữa 2048 và đếm số mẫu gần rail. Nếu xuất hiện rail hit, range được tăng; nếu biên độ quá nhỏ, range được giảm. Sau khi chuyển relay, dữ liệu được thu lại để đảm bảo kết quả dùng đúng hệ số calibration.
+
+\section{Nguồn, kết nối và phân bổ chân}
+STM32 sử dụng nguồn $3{,}3\unit{V}$, thạch anh ngoài $8\unit{MHz}$ và PLL để đạt $72\unit{MHz}$. Các tụ decoupling được đặt gần chân nguồn số, nguồn tương tự và nguồn tham chiếu. Đường USB D-/D+ nối PA11/PA12, có trở kháng vi sai và chiều dài tương đối cân bằng. SWD trên PA13/PA14 được giữ lại để nạp và debug; chỉ JTAG bị vô hiệu hóa khi cần giải phóng chân.
+
+\begin{table}[H]
+\centering
+\caption{Phân bổ các chân điều khiển chính}
+\label{tab:pinmap}
+\begin{tabularx}{\textwidth}{|p{3cm}|p{3.8cm}|X|}
+\hline
+\tableheadcolor\textbf{Khối} & \textbf{Chân STM32} & \textbf{Chức năng} \\ \hline
+MCP4822 & PA3, PA4, PA5, PA7 & LDAC, CS, SPI1 SCK, SPI1 MOSI \\ \hline
+ADS7861 & PB13, PB14 & SPI2 SCK, SPI2 MISO \\ \hline
+ADS7861 & PA8, PB10, PB12 & RD/CONVST, BUSY, CS \\ \hline
+ADS7861 & PB0, PB1, PB11 & M0, A0, M1 \\ \hline
+Range & PA15, PB3, PB4 & Relay $0{,}3\unit{V}$, $3{,}3\unit{V}$, $10\unit{V}$ \\ \hline
+USB FS & PA11, PA12 & D-, D+ \\ \hline
+Debug & PA13, PA14 & SWDIO, SWCLK \\ \hline
+\end{tabularx}
 \end{table}
 
-\subsection{Định nghĩa các loại khung dữ liệu (Frame Types)}
-Hệ thống quy định các mã loại khung để phần mềm Desktop có thể phân tách dữ liệu chính xác:
+\chapter{THIẾT KẾ FIRMWARE VÀ GIAO THỨC TRUYỀN THÔNG}
+
+\section{Kiến trúc firmware STM32F103}
+Firmware được xây dựng bằng STM32Cube HAL và PlatformIO. Các thành phần chính gồm driver \code{mcp4822}, driver \code{ads7861}, \code{range\_control}, \code{calibration}, \code{measurement\_engine}, \code{test\_controller}, \code{command\_parser}, \code{protocol} và lớp USB Device CDC.
+
+Sau khởi tạo clock và GPIO, firmware khởi tạo SPI1/SPI2 trong chế độ thường, ép USB re-enumeration, khởi động USB, nạp calibration và đưa hệ thống về IDLE. Callback nhận USB chỉ đưa từng byte vào parser; việc thực thi lệnh và tạo phản hồi diễn ra trong vòng lặp chính, tránh giữ ngắt USB quá lâu.
+
+\section{Điều khiển MCP4822 và ADS7861}
+Driver MCP4822 tạo frame 16-bit theo datasheet và truyền bằng SPI1. Bit kênh cho phép mở rộng sang hai đầu ra; bit gain điều khiển X1/X2. Driver ADS7861 tạo xung chuyển đổi, đọc hai word SPI và có timeout cho BUSY cũng như SPI. Kết quả luôn được chuẩn hóa về mã 12-bit trước khi lưu vào buffer.
+
+Trong chế độ NORMAL, bộ điều khiển thực hiện chu trình: tạo mẫu DAC, chờ thời gian ổn định, phát code, kích ADC và đọc cặp mẫu. Trong chế độ USB SIM, SPI được bỏ qua; firmware tạo hai kênh sine có gain 0,8 và lệch pha $-25^\circ$. Bộ tích lũy pha làm các frame liên tiếp liên tục theo thời gian và thuật toán truy hồi sin/cos giảm tải tính toán trên Cortex-M3 không có FPU.
+
+\section{Thu thập, xử lý kết quả và calibration}
+Buffer tối đa gồm 2048 cặp mẫu. Measurement engine tính mean, Vpp, RMS AC, gain dB và phase. Trên desktop, các phép đo được thực hiện lại từ dữ liệu thô bằng sine fit để có độ ổn định tốt hơn khi $N$ thấp. Phân chia này cho phép firmware trả kết quả nhanh, còn PC thực hiện DSP chi tiết.
+
+Calibration gồm hệ số DAC $(a,b)$ và các cặp $(m,c)$ cho từng kênh/từng range. Trên STM32F103, cấu trúc calibration được lưu tại trang Flash cuối, địa chỉ \code{0x0800FC00}. Các lệnh GET/SET/SAVE/RESET cho phép ứng dụng đọc, sửa và lưu hệ số mà không cần biên dịch lại firmware.
+
+\section{USB CDC và giao thức lệnh}
+Thiết bị sử dụng VID \code{0x0483}, PID \code{0x5740} và được Windows nhận bằng driver \code{usbser.sys}. USB chạy Full Speed; tốc độ baud $115200$ trong line coding chỉ là metadata của CDC, không giới hạn bus USB.
+
+Trong quá trình phát triển, thiết bị từng xuất hiện COM nhưng báo Code 10. Nguyên nhân là vùng cấp phát tĩnh 512 byte nhỏ hơn cấu trúc \code{USBD\_CDC\_HandleTypeDef}. Sau khi vùng nhớ được xác định trực tiếp theo \code{sizeof}, class CDC khởi tạo thành công. Đồng thời, PMA được bố trí từ địa chỉ \code{0x40} trở lên để không chồng Buffer Descriptor Table, và ngắt \code{USB\_LP\_CAN1\_RX0} gọi đúng \code{HAL\_PCD\_IRQHandler}.
+
+\begin{table}[H]
+\centering
+\caption{Các lệnh chính của giao thức ASCII}
+\label{tab:commands}
+\begin{tabularx}{\textwidth}{|p{3.5cm}|p{3.2cm}|X|}
+\hline
+\tableheadcolor\textbf{Lệnh} & \textbf{Phản hồi} & \textbf{Chức năng} \\ \hline
+PING & OK & Kiểm tra kết nối hai chiều \\ \hline
+INFO & DATA:... & Đọc tên thiết bị và phiên bản firmware \\ \hline
+CONFIG:... & OK/ERR & Cấu hình dạng sóng, $f$, biên độ, offset, gain, $F_s$, số mẫu \\ \hline
+START / STOP & OK & Bắt đầu hoặc dừng phép đo \\ \hline
+GET\_STATUS & DATA:IDLE/\newline RUNNING & Đọc trạng thái bộ điều khiển \\ \hline
+GET\_RESULT & RESULT:\{...\} & Nhận kết quả dạng JSON một dòng \\ \hline
+GET\_SAMPLES & Binary frame & Nhận mẫu CH1/CH2 \\ \hline
+SET\_RANGE /\newline GET\_RANGE & OK/DATA & Điều khiển và đọc range \\ \hline
+GET/SET/\newline SAVE\_CALIB & DATA/OK & Quản lý hệ số hiệu chuẩn \\ \hline
+\end{tabularx}
+\end{table}
+
+\section{Giao thức truyền dữ liệu nhị phân}
+Khung dữ liệu mẫu được mô tả trong Bảng \ref{tab:binaryframe}. Payload chứa các cặp CH1/CH2, mỗi mẫu 16-bit big-endian nhưng chỉ sử dụng 12 bit thấp. Với 512 cặp mẫu, payload dài 2048 byte.
+
+\begin{table}[H]
+\centering
+\caption{Cấu trúc frame dữ liệu mẫu}
+\label{tab:binaryframe}
+\begin{tabularx}{\textwidth}{|p{3.5cm}|p{3cm}|X|}
+\hline
+\tableheadcolor\textbf{Trường} & \textbf{Kích thước} & \textbf{Giá trị/ý nghĩa} \\ \hline
+Header & 2 byte & \code{0xAA 0xBB} \\ \hline
+Frame type & 1 byte & \code{0x03} cho OSC capture \\ \hline
+Payload length & 2 byte & Big-endian \\ \hline
+Payload & $4M$ byte & $M$ cặp CH1/CH2 \\ \hline
+Checksum & 1 byte & XOR toàn payload \\ \hline
+\end{tabularx}
+\end{table}
+
+Firmware gửi payload theo chunk 64 byte để phù hợp packet USB FS và chờ \code{TxState} hoàn tất trước khi tái sử dụng buffer. Desktop đọc đủ đúng số byte, kiểm header, type, length và checksum. Frame thiếu hoặc sai checksum được chuyển thành lỗi truyền thông thay vì đưa vào DSP.
+
+\section{Tài nguyên và các chế độ kiểm thử}
+PlatformIO định nghĩa environment thường và \code{usb\_cdc\_test}. Ngoài ra firmware có các mode kiểm tra DAC, ADC, SPI loopback và Flash calibration. Kết quả build cuối được trình bày trong Bảng \ref{tab:resource}.
+
+\begin{table}[H]
+\centering
+\caption{Tài nguyên firmware sau khi hoàn thiện}
+\label{tab:resource}
+\begin{tabularx}{\textwidth}{|p{3.1cm}|Y|Y|Y|Y|}
+\hline
+\tableheadcolor\textbf{Environment} & \textbf{RAM (byte)} & \textbf{RAM} & \textbf{Flash (byte)} & \textbf{Flash} \\ \hline
+NORMAL & 18.592/20.480 & 90,8\% & 48.276/65.536 & 73,7\% \\ \hline
+USB CDC SIM & 18.424/20.480 & 90,0\% & 44.184/65.536 & 67,4\% \\ \hline
+\end{tabularx}
+\end{table}
+Dung lượng vẫn nằm trong giới hạn của STM32F103C8T6, tuy nhiên biên RAM nhỏ; do đó firmware tránh mảng float lớn và dùng buffer tĩnh có kích thước xác định.
+
+\chapter{THIẾT KẾ ỨNG DỤNG DESKTOP VÀ XỬ LÝ TÍN HIỆU}
+
+\section{Kiến trúc ứng dụng Signal Analyzer Pro}
+Ứng dụng được phát triển bằng Python 3, PyQt6 và PyQtGraph \cite{pyqt,pyqtgraph}. NumPy/SciPy thực hiện xử lý số; PySerial cung cấp giao tiếp COM \cite{numpy,scipy,pyserial}. Kiến trúc gồm ba phần: lớp UI/controller trong \code{signal\_analyzer.py}, worker đọc USB và module \code{signal\_analysis.py} chứa các công thức có thể kiểm thử độc lập.
+
+Các tab điều khiển gồm Network Analyzer, Bode Sweep, Calibration và Passive Oscilloscope. Các tab hiển thị gồm Oscilloscope Monitor, Frequency Sweep và Measurements. Thiết kế giữ giao diện thao tác tập trung nhưng tách DSP ra khỏi code widget nhằm tránh lặp công thức.
+
+Hình \ref{fig:appwave} thể hiện cấu hình $20\unit{kHz}$, $200\unit{kSPS}$ trong simulation. Giao diện hiển thị đồng thời waveform và cảnh báo POC do $N=10$.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.65\textwidth]{images/app_waveform_current.png}
+\caption{Giao diện waveform và phân tích điều kiện lấy mẫu}
+\label{fig:appwave}
+\end{figure}
+
+\section{Giao diện và luồng giao tiếp USB}
+Khi kết nối, ứng dụng quét danh sách COM, mở cổng, xóa buffer, gửi PING tối đa ba lần, sau đó đọc INFO và range. Khi đo live, QTimer chỉ khởi tạo worker nếu worker trước đã hoàn tất. Worker gửi GET\_RESULT và GET\_SAMPLES, đọc frame với timeout rồi phát signal về main thread. Vì vậy mất cổng hoặc thiếu byte không khóa cửa sổ.
+
+\section{Phân tích điều kiện lấy mẫu và sai số DAC}
+Hàm \code{calculate\_sampling\_quality} là nguồn duy nhất cho Period, Sample Interval, $N$, peak error, ZOH droop và settling margin. Ngưỡng đánh giá gồm:
 \begin{itemize}
-    \item \textbf{\texttt{0x01} (OSC\_STREAM):} Luồng dữ liệu oscilloscope thời gian thực. Dữ liệu bao gồm các cặp mẫu từ 2 kênh ADC, mỗi mẫu định dạng \texttt{uint16\_t}.
-    \item \textbf{\texttt{0x02} (BODE\_DATA):} Dữ liệu kết quả sau khi đo đạc tại một điểm tần số lẻ trong chu kỳ quét Bode.
-    \item \textbf{\texttt{0x03} (OSC\_CAPTURE):} Chế độ chụp dữ liệu tĩnh hoặc dữ liệu FFT đã được xử lý sơ bộ tại MCU.
+    \item $N<10$: WARNING\_SAMPLE\_TOO\_LOW;
+    \item $10\leq N<25$: WARNING\_POC\_ONLY;
+    \item $E_{peak}>1\%$: cảnh báo sai số peak;
+    \item $T_{margin}<0$: DAC chưa xác lập;
+    \item $0\leq T_{margin}<1\unit{\mu s}$: borderline.
+\end{itemize}
+Các giá trị cấu hình được cập nhật ngay khi người dùng thay đổi $f$ hoặc $F_s$, không cần chờ chạy phép đo.
+
+\section{Phân tích tín hiệu CH1 và CH2}
+Mỗi kênh được tính Vmax, Vmin, Vpp, Vpeak, RMS toàn phần, RMS AC, mean, tần số, chu kỳ và noise residual. Tần số ban đầu được ước lượng bằng positive zero crossing có nội suy phân đoạn. Sine fit tại tần số mục tiêu giải hệ tuyến tính gồm sin, cos và hằng số, từ đó suy ra amplitude, offset, phase và RMS phần dư.
+
+Clipping được phát hiện khi có plateau ít nhất ba mẫu liên tiếp gần cực trị; saturation được phát hiện trực tiếp từ raw code gần 0 hoặc 4095. Quy tắc ba mẫu tránh nhận nhầm hai điểm đỉnh bằng nhau trong trường hợp lấy 10 mẫu/chu kỳ.
+
+\section{Phân tích DUT và PASS/FAIL/WARNING}
+Ứng dụng ưu tiên $V_{RMS,AC}$ để tính gain và dùng phase sine-fit của CH2 trừ CH1. Gain error được so sánh với target/tolerance. Tần số và biên độ vào cũng có tolerance riêng. Communication error, data loss, clipping và saturation là điều kiện FAIL. Nếu các spec đạt nhưng sampling quality có cảnh báo, kết quả cuối là WARNING.
+
+Hình \ref{fig:appmeasure} trình bày bảng Channel Measurement và DUT Analysis. Ở bộ dữ liệu chuẩn, gain xấp xỉ 0,8, tương đương $-1{,}94\unit{dB}$, phase khoảng $-25^\circ$.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.98\textwidth]{images/app_measurements_current.png}
+\caption{Bảng thông số từng kênh và phân tích DUT}
+\label{fig:appmeasure}
+\end{figure}
+
+\section{Calibration, simulation và xuất dữ liệu}
+Tab Calibration hiển thị trạng thái default, loaded from device, loaded from JSON, modified but not saved hoặc saved to device. Người dùng có thể đọc/ghi hệ số qua USB và import/export JSON. Việc chuyển raw ADC sang volt trên desktop sử dụng cùng mô hình scale/offset theo range như firmware.
+
+Khi không có thiết bị, mục SIMULATE tạo cặp sine Vin/Vout theo đúng $F_s$, số mẫu, gain và phase. Chế độ này cho phép kiểm tra UI, DSP và export độc lập với phần cứng. Báo cáo JSON chứa timestamp, device info, cấu hình waveform, sampling quality, channel metrics, DUT metrics, calibration, trạng thái truyền thông và kết quả. Nếu người dùng chọn, raw samples được lưu đồng thời trong CSV và JSON.
+
+\chapter{KIỂM NGHIỆM, KẾT QUẢ VÀ THẢO LUẬN}
+
+\section{Cấu hình và phương pháp kiểm nghiệm}
+Kiểm nghiệm được thực hiện theo ba lớp: unit test cho công thức, kiểm tra giao tiếp USB trên bo STM32F103 và kiểm tra tích hợp desktop với firmware USB SIM. Thiết bị được nạp bằng J-Link; Windows nhận dưới tên \textit{USB Serial Device (COM3)}. Cấu hình chuẩn dùng sine, biên độ đỉnh $0{,}3\unit{V}$, offset $0\unit{V}$, gain X2, 512 hoặc 1024 mẫu.
+
+\section{Kiểm nghiệm USB CDC}
+Kết quả kiểm nghiệm USB được tóm tắt trong Bảng \ref{tab:usbtest}. Thiết bị có trạng thái \code{CM\_PROB\_NONE}; request/response ASCII và binary đều hoạt động.
+
+\begin{table}[H]
+\centering
+\caption{Kết quả kiểm nghiệm USB CDC}
+\label{tab:usbtest}
+\begin{tabularx}{\textwidth}{|p{4.5cm}|X|p{1.9cm}|}
+\hline
+\tableheadcolor\textbf{Phép thử} & \textbf{Kết quả quan sát} & \textbf{Đánh giá} \\ \hline
+Enumeration & COM3, VID:PID=0483:5740, trạng thái OK & PASS \\ \hline
+PING/INFO & PING$\rightarrow$OK; INFO trả đúng tên firmware & PASS \\ \hline
+Độ ổn định tuần tự & 100/100 phản hồi PING hợp lệ & PASS \\ \hline
+Frame 128 mẫu/kênh & 512 byte payload, header/type đúng, checksum đúng & PASS \\ \hline
+Frame 512 mẫu/kênh & 2048 byte payload, đủ hai kênh, checksum đúng & PASS \\ \hline
+STOP/GET\_STATUS & Trạng thái cuối DATA:IDLE & PASS \\ \hline
+\end{tabularx}
+\end{table}
+
+\section{Kiểm nghiệm điều kiện lấy mẫu}
+Bốn test case bắt buộc được chạy bằng unit test và kiểm tra lại trên UI. Kết quả ở Bảng \ref{tab:samplingcases} khớp công thức lý thuyết.
+
+\begin{table}[H]
+\centering
+\caption{Kết quả đánh giá các cấu hình lấy mẫu}
+\label{tab:samplingcases}
+\begin{tabularx}{\textwidth}{|p{1.8cm}|p{2cm}|p{0.8cm}|p{1.7cm}|p{1.7cm}|X|}
+\hline
+\tableheadcolor$f$ & $F_s$ & $N$ & $E_{peak}$ & $E_{ZOH}$ & $T_{margin}$ / Kết luận \\ \hline
+$20\unit{kHz}$ & $200\unit{kSPS}$ & 10 & 4,894\% & 1,637\% & $+0,50\unit{\mu s}$; POC \\ \hline
+$20\unit{kHz}$ & $500\unit{kSPS}$ & 25 & 0,789\% & 0,263\% & $-2,50\unit{\mu s}$; DAC chưa ổn định \\ \hline
+$20\unit{kHz}$ & $1\unit{MSPS}$ & 50 & 0,197\% & 0,066\% & $-3,50\unit{\mu s}$; DAC chưa ổn định \\ \hline
+$2\unit{kHz}$ & $200\unit{kSPS}$ & 100 & 0,049\% & 0,016\% & $+0,50\unit{\mu s}$; borderline \\ \hline
+\end{tabularx}
+\end{table}
+
+Kết quả cho thấy tăng $F_s$ làm giảm sai số lấy mẫu nhưng không tự động cải thiện toàn hệ thống. Khi DAC cũng được cập nhật ở cùng tốc độ, khoảng thời gian mỗi mẫu có thể nhỏ hơn settling time. Vì vậy $500\unit{kSPS}$ và $1\unit{MSPS}$ có nhiều điểm/chu kỳ nhưng vẫn bị cảnh báo DAC not settled. Cách khắc phục là giảm tốc độ cập nhật DAC, dùng timer riêng, tạo LUT theo chu kỳ hoặc chọn DAC nhanh hơn.
+
+\section{Kiểm nghiệm thuật toán đo}
+Unit test sử dụng hai tín hiệu sine có offset khác nhau, gain 2 và phase $-30^\circ$. RMS AC loại đúng offset; gain linear thu được 2,000 và phase sai lệch dưới mức làm tròn của test. Test $20\unit{kHz}/200\unit{kSPS}$ xác nhận kết quả tổng thể là WARNING dù gain nằm trong tolerance.
+
+Trong phép thử tích hợp với firmware SIM, kết quả representative ở Bảng \ref{tab:measurementresult} được tính từ 512 cặp mẫu.
+
+\begin{table}[H]
+\centering
+\caption{Kết quả phân tích DUT chuẩn tại $20\unit{kHz}$}
+\label{tab:measurementresult}
+\begin{tabularx}{\textwidth}{|p{3.4cm}|p{3cm}|p{3.6cm}|X|}
+\hline
+\tableheadcolor\textbf{Thông số} & \textbf{Giá trị đặt} & \textbf{Giá trị đo} & \textbf{Nhận xét} \\ \hline
+Tần số CH1 & $20.000\unit{Hz}$ & $19.999{,}4\unit{Hz}$ & Sai lệch nhỏ \\ \hline
+Biên độ đỉnh Vin & $0{,}300\unit{V}$ & $0{,}300\unit{V}$ (sine fit) & Đạt \\ \hline
+Gain linear & 0,800 & 0,800 & Đạt \\ \hline
+Gain dB & $-1{,}938\unit{dB}$ & $-1{,}940\unit{dB}$ & Đạt \\ \hline
+Phase & $-25{,}0^\circ$ & $-25{,}01^\circ$ & Đạt \\ \hline
+Clipping/saturation & Không & Không & Đạt \\ \hline
+Kết quả tổng & -- & WARNING & Do điều kiện lấy mẫu \\ \hline
+\end{tabularx}
+\end{table}
+
+Vpp đo trực tiếp khoảng $0{,}573\unit{V}$, nhỏ hơn $0{,}600\unit{V}$ lý tưởng do chỉ có 10 mẫu/chu kỳ. Trong khi đó sine fit khôi phục biên độ gần $0{,}300\unit{V}$. Kết quả này chứng minh lựa chọn RMS AC/sine fit phù hợp hơn max/min trong cấu hình POC.
+
+\section{Kiểm nghiệm quét Bode}
+Chế độ Bode gửi cấu hình theo dãy tần số logarithm, đo tại từng điểm và tích lũy gain/phase. Với DUT tham chiếu có gain vùng thông xấp xỉ $-1{,}94\unit{dB}$ và đặc tính thông thấp bậc một, đường gain giữ ổn định trong vùng thông, giảm quanh tần số cắt và phase biến đổi liên tục. Worker quét chạy tách khỏi GUI nên thanh tiến độ và cửa sổ vẫn phản hồi.
+
+Để tránh kết quả sai, mỗi điểm Bode được gắn với range, sampling quality và trạng thái communication. Điểm có data loss hoặc clipping không được coi là một giá trị đo hợp lệ.
+
+\section{Phân tích sai số}
+Các nguồn sai số chính gồm:
+\begin{itemize}
+    \item \textbf{Lượng tử ADC/DAC}: độ phân giải 12-bit tạo sai số tối thiểu theo LSB và tăng tương đối khi tín hiệu nhỏ.
+    \item \textbf{Sampling phase}: max/min nhạy với vị trí mẫu, đặc biệt ở $N=10$.
+    \item \textbf{DAC settling và ZOH}: hạn chế waveform ở tốc độ cập nhật cao.
+    \item \textbf{AFE và range}: dung sai điện trở, offset op-amp và relay ảnh hưởng scale/offset.
+    \item \textbf{Clock}: sai số thạch anh ảnh hưởng tần số phát, $F_s$ và phase.
+    \item \textbf{Thuật toán}: zero crossing bị ảnh hưởng bởi nhiễu; sine fit giả định tín hiệu gần sine.
+    \item \textbf{Truyền thông}: thiếu byte hoặc sai frame; được phát hiện bằng length và checksum.
 \end{itemize}
 
-\subsection{Cơ chế kiểm soát lỗi}
-Hệ thống sử dụng thuật toán XOR checksum để kiểm tra tính toàn vẹn của phần Payload. Phía ứng dụng Desktop sau khi nhận đủ số lượng byte theo \texttt{Payload Length} sẽ thực hiện tính toán lại giá trị XOR của toàn bộ chuỗi dữ liệu nhận được và đối soát với byte \texttt{Checksum} cuối cùng. Nếu xảy ra sai lệch, gói tin sẽ bị hủy để bảo vệ tính chính xác cho các bước hậu xử lý DSP.
+Calibration tuyến tính bù được phần lớn sai số gain/offset tĩnh nhưng không bù hoàn toàn đặc tính theo tần số, jitter hoặc méo phi tuyến. Khi yêu cầu độ chính xác cao, cần calibration đa điểm theo tần số và biên độ.
 
-\subsection{Xử lý luồng dữ liệu và Hiển thị đồ họa}
-Để đảm bảo trải nghiệm người dùng mượt mà, phần mềm Desktop được thiết kế dựa trên cơ chế đa luồng (Multi-threading). Luồng nhận dữ liệu hoạt động độc lập, liên tục giải mã các gói tin từ cổng Serial và đẩy vào hàng đợi (Queue). 
+\section{Thảo luận}
+Ưu điểm của hệ thống là kiến trúc đầy đủ từ phát, thu, truyền dữ liệu đến đánh giá chất lượng; có khả năng chạy không phần cứng; và không che giấu giới hạn đo bằng một nhãn PASS đơn giản. Hai kênh ADC đồng thời phù hợp với phép đo phase. Giao thức request/response dễ debug, trong khi frame nhị phân giảm overhead khi truyền mẫu.
 
-Luồng chính (Main GUI Thread) sẽ thực hiện quét hàng đợi và cập nhật dữ liệu lên các thành phần đồ họa:
+Hạn chế lớn nhất là tài nguyên STM32F103 gần đầy RAM, DAC có settling time tương đối lớn và checksum XOR chỉ phát hiện lỗi đơn giản. Luồng thu vật lý hiện dùng giao tiếp polling nên khả năng duy trì tốc độ cao phụ thuộc thời gian SPI và xử lý. Đối với waveform không sine, sine fit không còn là estimator phù hợp; khi đó cần chuyển sang FFT hoặc mô hình theo dạng sóng.
+
+\chapter{KẾT LUẬN VÀ HƯỚNG PHÁT TRIỂN}
+
+\section{Kết luận}
+Đồ án đã hoàn thành một hệ thống phân tích tín hiệu khuếch đại gồm phần cứng STM32F103C8T6, MCP4822, ADS7861, mạch lựa chọn range, firmware USB CDC và ứng dụng Signal Analyzer Pro. Hệ thống phát/thu hai kênh, truyền dữ liệu về PC, hiển thị waveform/Bode, quản lý calibration và phân tích đầy đủ các thông số chính của tín hiệu và DUT.
+
+Điểm khác biệt quan trọng là kết quả được đánh giá cùng điều kiện đo. Cấu hình $20\unit{kHz}/200\unit{kSPS}$ được nhận diện đúng là POC với 10 mẫu/chu kỳ, sai số peak gần $4{,}9\%$ và settling margin $0{,}5\unit{\mu s}$. RMS AC và sine fit giúp giảm ảnh hưởng bỏ lỡ đỉnh, nhưng ứng dụng vẫn giữ trạng thái WARNING để người dùng không hiểu nhầm độ chính xác.
+
+\section{Đánh giá mức độ hoàn thành}
+Các mục tiêu về giao tiếp USB, điều khiển ngoại vi, dữ liệu hai kênh, simulation, DSP, PASS/FAIL/WARNING, calibration và export đã được triển khai. Firmware build thành công trên giới hạn STM32F103C8T6; USB đạt 100/100 PING và truyền đúng frame 512 mẫu/kênh; toàn bộ unit test bắt buộc đạt yêu cầu. Giao diện giữ được khả năng phản hồi khi đọc serial nhờ worker thread.
+
+\section{Hạn chế của hệ thống}
+Biên RAM còn khoảng 9\%, làm giảm khả năng tăng buffer. Tốc độ DAC giới hạn chất lượng sine ở tần số cao. Auto-range dùng relay có thời gian chuyển mạch lớn hơn switch bán dẫn. Phép đo noise/phase hiện tối ưu cho sine; chưa thay thế được thiết bị phân tích phổ chuẩn trong các bài đo THD+N rất thấp. Giao thức XOR phù hợp nguyên mẫu nhưng không mạnh bằng CRC-16/CRC-32.
+
+\section{Hướng phát triển}
+Các hướng phát triển tiếp theo gồm:
 \begin{itemize}
-    \item \textbf{Giao diện Oscilloscope:} Sử dụng thư viện \texttt{pyqtgraph} để tối ưu hiệu năng vẽ điểm. Dữ liệu sóng được cập nhật với tần số làm tươi cao, cho phép quan sát trực quan sự thay đổi của tín hiệu theo thời gian thực.
-    \item \textbf{Đồ thị Bode:} Các điểm dữ liệu Gain và Phase sau khi quét tần số được tích lũy và biểu diễn trên hệ trục tọa độ Logarit. Việc tách biệt xử lý giúp ứng dụng vẫn có thể phản hồi các thao tác của người dùng ngay cả khi đang thực hiện tính toán DSP phức tạp.
+    \item Dùng DMA, timer trigger và ping-pong buffer cho chuỗi DAC/ADC.
+    \item Sử dụng DAC có settling nhanh hơn hoặc DDS chuyên dụng khi đo tần số cao.
+    \item Bổ sung trigger oscilloscope, FFT, THD, SNR, SINAD và group delay.
+    \item Nâng checksum lên CRC-16/CRC-32 và thêm sequence number để phát hiện mất frame.
+    \item Calibration đa điểm theo range, tần số và biên độ; lưu hồ sơ truy xuất chuẩn.
+    \item Tối ưu RAM hoặc chuyển sang MCU có SRAM lớn hơn cho streaming liên tục.
+    \item Hoàn thiện vỏ thiết bị, connector BNC, bảo vệ đầu vào và quy trình tự kiểm tra.
 \end{itemize}
 
-% --- TÀI LIỆU THAM KHẢO ---
+% ==================== TÀI LIỆU THAM KHẢO ====================
 \addcontentsline{toc}{chapter}{TÀI LIỆU THAM KHẢO}
 \begin{thebibliography}{99}
-    \bibitem{1} STMicroelectronics, \textit{STM32F407xx Datasheet - ARM Cortex-M4 32b MCU+FPU}, 2021.
-    \bibitem{2} Riverbank Computing, \textit{PyQt6 Documentation - Python Bindings for the Qt Cross Platform Application Framework}, 2023.
-    \bibitem{3} Scipy Contributors, \textit{SciPy Documentation v1.11}, 2023. [Online]. Available: https://docs.scipy.org/doc/scipy/
-    \bibitem{4} Luke Campagnola, \textit{Pyqtgraph Documentation - Scientific Graphics and GUI Library for Python}, 2023. [Online]. Available: https://www.pyqtgraph.org/
+\bibitem{stm32ds} STMicroelectronics, \textit{STM32F103x8, STM32F103xB Medium-density Performance Line ARM-based 32-bit MCU Datasheet}, DS5319, STMicroelectronics.
+\bibitem{stm32rm} STMicroelectronics, \textit{RM0008: STM32F101xx, STM32F102xx, STM32F103xx, STM32F105xx and STM32F107xx Reference Manual}.
+\bibitem{mcp4822} Microchip Technology Inc., \textit{MCP4802/4812/4822: 8/10/12-Bit Dual Voltage Output Digital-to-Analog Converter with Internal VREF and SPI Interface}, Datasheet DS20002249.
+\bibitem{ads7861} Texas Instruments, \textit{ADS7861: Dual, 500-kSPS, 12-Bit, 2+2 Channel, Simultaneous Sampling Analog-to-Digital Converter}, Datasheet SBAS110.
+\bibitem{usbcdc} USB Implementers Forum, \textit{Universal Serial Bus Class Definitions for Communications Devices}, Revision 1.2.
+\bibitem{oppenheim} A. V. Oppenheim and R. W. Schafer, \textit{Discrete-Time Signal Processing}, 3rd ed. Pearson, 2010.
+\bibitem{numpy} NumPy Developers, \textit{NumPy Documentation}. [Online]. Available: \url{https://numpy.org/doc/}
+\bibitem{scipy} SciPy Community, \textit{SciPy Documentation}. [Online]. Available: \url{https://docs.scipy.org/doc/scipy/}
+\bibitem{pyqt} Riverbank Computing, \textit{PyQt6 Reference Guide}. [Online]. Available: \url{https://www.riverbankcomputing.com/static/Docs/PyQt6/}
+\bibitem{pyqtgraph} PyQtGraph Developers, \textit{PyQtGraph Documentation}. [Online]. Available: \url{https://pyqtgraph.readthedocs.io/}
+\bibitem{pyserial} C. Liechti, \textit{pySerial Documentation}. [Online]. Available: \url{https://pyserial.readthedocs.io/}
 \end{thebibliography}
 
 \end{document}
