@@ -140,6 +140,7 @@ int main(void)
     /* USER CODE BEGIN 3 */
     /* USB ISR only queues complete lines; commands execute in thread context. */
     command_parser_process();
+    test_controller_service();
 
 #if (ACTIVE_MODE == MODE_TEST_DAC)
     /*

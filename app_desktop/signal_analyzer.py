@@ -412,6 +412,16 @@ class LiveCaptureWorker(QThread):
 
     def run(self):
         try:
+            # Every live frame is a fresh hardware capture. The firmware stops
+            # its DAC stream, captures, ACKs, then resumes continuous output.
+            self.serial_conn.write(b"START\n")
+            self.serial_conn.flush()
+            start_response = self.serial_conn.readline().decode("utf-8").strip()
+            if start_response != "OK":
+                raise RuntimeError(
+                    f"START failed: {start_response or 'TIMEOUT'}"
+                )
+
             self.serial_conn.write(b"GET_RESULT\n")
             self.serial_conn.flush()
             result_line = self.serial_conn.readline().decode("utf-8").strip()
@@ -475,6 +485,7 @@ class SignalAnalyzerApp(QMainWindow):
         self.i18n_tabs = []
         self.time_counter = 0.0
         self.current_live_mode = None 
+        self.detail_view_active = False
         
         # Serial variables
         self.serial_conn = None
@@ -553,7 +564,8 @@ class SignalAnalyzerApp(QMainWindow):
         main_layout = QHBoxLayout(main_widget)
         
         # --- LEFT PANEL: Controls ---
-        left_panel = QVBoxLayout()
+        self.left_panel_widget = QWidget()
+        left_panel = QVBoxLayout(self.left_panel_widget)
         left_panel.setContentsMargins(0, 0, 10, 0)
         
         # ====== DEVICE CONNECTION ======
@@ -939,7 +951,7 @@ class SignalAnalyzerApp(QMainWindow):
         self.btn_restore_app_defaults.clicked.connect(self.restore_app_defaults)
 
         left_panel.addWidget(self.ctrl_tabs)
-        main_layout.addLayout(left_panel, stretch=1)
+        main_layout.addWidget(self.left_panel_widget, stretch=1)
         
         # --- RIGHT PANEL: Plots ---
         self.view_tabs = QTabWidget()
@@ -947,6 +959,14 @@ class SignalAnalyzerApp(QMainWindow):
         # VIEW TAB 1: OSCILLOSCOPE MONITOR
         tab1 = QWidget()
         tab1_layout = QVBoxLayout(tab1)
+        detail_toolbar = QHBoxLayout()
+        detail_toolbar.addStretch()
+        self.btn_detail_view = QPushButton("Detail View")
+        self.btn_detail_view.setProperty("i18n_source", "Detail View")
+        self.btn_detail_view.setToolTip("Hide controls and expand the waveform")
+        self.btn_detail_view.clicked.connect(self.toggle_detail_view)
+        detail_toolbar.addWidget(self.btn_detail_view)
+        tab1_layout.addLayout(detail_toolbar)
         self.plot_osc = pg.PlotWidget(title="Time Domain Waveform (Double-click to Maximize)")
         self.plot_osc.showGrid(x=True, y=True); self.plot_osc.addLegend()
         self.plot_osc.setLabel('left', 'Voltage', 'V'); self.plot_osc.setLabel('bottom', 'Time', 's')
@@ -956,7 +976,9 @@ class SignalAnalyzerApp(QMainWindow):
         self.view_tabs.addTab(tab1, "Oscilloscope Monitor")
         
         self.plot_osc.setProperty("is_maximized", False)
-        self.plot_osc.scene().sigMouseClicked.connect(lambda evt: self.toggle_maximize(self.plot_osc) if evt.double() else None)
+        self.plot_osc.scene().sigMouseClicked.connect(
+            lambda evt: self.toggle_detail_view() if evt.double() else None
+        )
         
         # VIEW TAB 2: BODE PLOT
         tab2 = QWidget()
@@ -1426,6 +1448,16 @@ class SignalAnalyzerApp(QMainWindow):
             clicked_widget.show()
             clicked_widget.setProperty("is_maximized", True)
 
+    def toggle_detail_view(self):
+        """Expand the main waveform and always leave an explicit back button."""
+        self.detail_view_active = not self.detail_view_active
+        self.left_panel_widget.setVisible(not self.detail_view_active)
+        self.view_tabs.tabBar().setVisible(not self.detail_view_active)
+        source = "Back to Controls" if self.detail_view_active else "Detail View"
+        self.btn_detail_view.setProperty("i18n_source", source)
+        self.btn_detail_view.setText(self.tr(source))
+        QTimer.singleShot(0, self.plot_osc.autoRange)
+
     def toggle_live(self, mode):
         if self.live_timer.isActive():
             self.live_timer.stop()
@@ -1455,15 +1487,6 @@ class SignalAnalyzerApp(QMainWindow):
                         f"Device response: {self.last_command_response}",
                     )
                     return
-                if not self.serial_send_cmd("START\n"):
-                    QMessageBox.critical(
-                        self,
-                        self.tr("Error"),
-                        f"{self.tr('Device did not acknowledge START.')}\n"
-                        f"Device response: {self.last_command_response}",
-                    )
-                    return
-                
             self.pending_device_stop = False
             self.last_communication_ok = True
             self.last_data_complete = True

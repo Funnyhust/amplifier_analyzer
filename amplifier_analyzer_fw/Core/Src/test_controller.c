@@ -35,6 +35,7 @@ uint16_t dac_lut[MAX_DAC_LUT];
 uint32_t dac_lut_size = 256;
 static volatile uint8_t dac_stream_running = 0U;
 static volatile uint16_t dac_stream_index = 0U;
+static volatile uint8_t dac_stream_start_pending = 0U;
 
 #if (ACTIVE_MODE == MODE_TEST_USB)
 static float usb_sim_phase = 0.0f;
@@ -147,7 +148,7 @@ void test_controller_init(void) {
     current_config.offset_mv = 0;      // 0 mV
     current_config.dac_gain = 2;       // X2
     current_config.fs = 200000;        // 200 kSPS
-    current_config.samples = 1024;     // 1024 points
+    current_config.samples = 128;      // Must not exceed MAX_ADC_BUF
     
     calibration_init();
     range_control_init();
@@ -198,6 +199,7 @@ static void test_controller_dac_stream_stop(void) {
 #endif
     dac_stream_running = 0U;
     dac_stream_index = 0U;
+    dac_stream_start_pending = 0U;
 }
 
 static uint8_t test_controller_dac_stream_start(void) {
@@ -249,10 +251,17 @@ void test_controller_dac_timer_irq(void) {
 
     if (dac_stream_running != 0U && dac_lut_size != 0U) {
         uint16_t index = dac_stream_index;
-        (void)mcp4822_write_raw_isr(
-            MCP4822_CHANNEL_A,
-            current_config.dac_gain == 2U ? MCP4822_GAIN_X2 : MCP4822_GAIN_X1,
-            dac_lut[index]);
+        if (mcp4822_write_raw_isr(
+                MCP4822_CHANNEL_A,
+                current_config.dac_gain == 2U ? MCP4822_GAIN_X2
+                                              : MCP4822_GAIN_X1,
+                dac_lut[index]) != MCP4822_OK) {
+            /* A failed peripheral must not create a permanent IRQ storm. */
+            TIM3->DIER &= ~TIM_DIER_UIE;
+            TIM3->CR1 &= ~TIM_CR1_CEN;
+            dac_stream_running = 0U;
+            return;
+        }
         index++;
         if (index >= dac_lut_size) index = 0U;
         dac_stream_index = index;
@@ -294,7 +303,20 @@ uint8_t test_controller_configure(const TestConfig_t *config) {
 }
 
 uint8_t test_controller_start(void) {
-    if (current_state == STATE_RUNNING) return 1U;
+    if (current_state == STATE_RUNNING) {
+        /* A repeated START means a fresh live capture, not stale-buffer ACK. */
+        test_controller_dac_stream_stop();
+        current_state = STATE_IDLE;
+    }
+
+    if (current_config.samples == 0U ||
+        current_config.samples > MAX_ADC_BUF ||
+        current_config.fs == 0U || current_config.freq == 0U ||
+        dac_lut_size == 0U) {
+        last_test_error = TEST_ERROR_CONFIG_FIELDS;
+        current_state = STATE_ERROR;
+        return 0U;
+    }
     
     current_state = STATE_RUNNING;
     last_test_error = TEST_ERROR_NONE;
@@ -401,13 +423,27 @@ uint8_t test_controller_start(void) {
      * Start the independent continuous generator only after blocking ADS
      * bring-up capture is complete. This avoids ISR/bit-bang interaction.
      */
-    if (test_controller_dac_stream_start() == 0U) {
-        last_test_error = TEST_ERROR_CAPTURE;
-        current_state = STATE_ERROR;
-        return 0U;
-    }
+    /*
+     * Defer the high-rate timer until command_parser has transmitted the START
+     * acknowledgement.  test_controller_service() is called on the next main
+     * loop iteration, after protocol_send_raw() has completed the IN transfer.
+     */
+    dac_stream_start_pending = 1U;
 #endif
     return 1U;
+}
+
+void test_controller_service(void) {
+#if defined(STM32F103xB) && (ACTIVE_MODE == MODE_NORMAL)
+    if (dac_stream_start_pending == 0U) return;
+
+    dac_stream_start_pending = 0U;
+    if (current_state == STATE_RUNNING &&
+        test_controller_dac_stream_start() == 0U) {
+        last_test_error = TEST_ERROR_CAPTURE;
+        current_state = STATE_ERROR;
+    }
+#endif
 }
 
 TestError_t test_controller_get_last_error(void) {
@@ -447,11 +483,19 @@ void test_controller_stop(void) {
 }
 
 void test_controller_get_result(char *out_buf, uint16_t max_len) {
+    /* JSON has no NaN/Infinity literals. Never leak non-finite DSP values. */
+    float vin_rms = isfinite(last_result.vin_rms) ? last_result.vin_rms : 0.0f;
+    float vin_vpp = isfinite(last_result.vin_vpp) ? last_result.vin_vpp : 0.0f;
+    float vout_rms = isfinite(last_result.vout_rms) ? last_result.vout_rms : 0.0f;
+    float vout_vpp = isfinite(last_result.vout_vpp) ? last_result.vout_vpp : 0.0f;
+    float gain_db = isfinite(last_result.gain_db) ? last_result.gain_db : -99.0f;
+    float phase_deg = isfinite(last_result.phase_deg) ? last_result.phase_deg : 0.0f;
+    float freq_est = isfinite(last_result.freq_est) ? last_result.freq_est : 0.0f;
+
     snprintf(out_buf, max_len, "RESULT:{\"vin_rms\":%.2f,\"vin_vpp\":%.2f,\"vout_rms\":%.2f,\"vout_vpp\":%.2f,\"gain_db\":%.2f,\"phase_deg\":%.2f,\"freq_est\":%.1f,\"range\":%d,\"range_name\":\"%s\",\"range_mode\":\"%s\"}\n",
-             last_result.vin_rms, last_result.vin_vpp,
-             last_result.vout_rms, last_result.vout_vpp,
-             last_result.gain_db, last_result.phase_deg,
-             last_result.freq_est, range_control_get_current_range(),
+             vin_rms, vin_vpp, vout_rms, vout_vpp,
+             gain_db, phase_deg, freq_est,
+             range_control_get_current_range(),
              range_control_get_range_name(), range_control_get_mode_name());
 }
 

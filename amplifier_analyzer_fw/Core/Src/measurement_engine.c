@@ -72,7 +72,7 @@ void measurement_engine_process(uint32_t *adc_buf, uint32_t len, uint32_t fs, ui
     last_result.vout_rms = rms_out;
     
     // 3. Gain calculation (in dB)
-    if (rms_in > 0.01f) {
+    if (rms_in > 0.01f && rms_out > 0.01f) {
         float gain = rms_out / rms_in;
         last_result.gain_db = 20.0f * log10f(gain);
     } else {

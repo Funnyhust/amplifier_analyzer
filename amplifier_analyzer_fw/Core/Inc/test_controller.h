@@ -43,6 +43,7 @@ extern TestState_t current_state;
 extern TestConfig_t current_config;
 
 void test_controller_init(void);
+void test_controller_service(void);
 uint8_t test_controller_configure(const TestConfig_t *config);
 uint8_t test_controller_start(void);
 TestError_t test_controller_get_last_error(void);
