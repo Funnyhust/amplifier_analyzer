@@ -20,6 +20,8 @@ MCP4822_Status_t mcp4822_write_raw(uint8_t channel, uint8_t gain_x2,
 MCP4822_Status_t mcp4822_write_raw_isr(uint8_t channel, uint8_t gain_x2,
                                         uint16_t code);
 void mcp4822_flush_isr(void);
+void mcp4822_account_dma_cycle(uint32_t frames, uint16_t last_frame);
+void mcp4822_account_dma_error(void);
 MCP4822_Status_t mcp4822_set_voltage_mv(uint8_t channel, uint8_t gain_x2,
                                         float voltage_mv);
 MCP4822_Status_t mcp4822_shutdown(uint8_t channel, uint8_t gain_x2);

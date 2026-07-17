@@ -481,7 +481,7 @@ class LiveStreamWorker(QThread):
 
     # Proven end-to-end for 30 s while the DAC updates at 50 kHz:
     # no CRC/sequence loss and no firmware overrun/invalid/overwrite.
-    STREAM_FS = 100000
+    STREAM_FS = 110000
     UI_BLOCK_SAMPLES = 512
 
     def __init__(self, serial_conn):
@@ -535,7 +535,7 @@ class LiveStreamWorker(QThread):
                 if first != b"\xaa":
                     raise ValueError(f"invalid stream prefix: {first.hex()}")
                 header = first + self._read_exact(4)
-                if header[:2] != b"\xaa\xbb" or header[2] != 0x01:
+                if header[:2] != b"\xaa\xbb" or header[2] not in (0x01, 0x04):
                     raise ValueError(f"invalid stream header: {header.hex(' ')}")
                 payload_length = int.from_bytes(header[3:5], "big")
                 payload = self._read_exact(payload_length)
@@ -551,7 +551,8 @@ class LiveStreamWorker(QThread):
                 sequence = int.from_bytes(payload[0:4], "big")
                 fs = int.from_bytes(payload[4:8], "big")
                 count = int.from_bytes(payload[8:10], "big")
-                if payload_length != 10 + count * 4:
+                bytes_per_sample = 3 if header[2] == 0x04 else 4
+                if payload_length != 10 + count * bytes_per_sample:
                     raise ValueError("invalid stream payload length")
                 if self.expected_sequence is not None and sequence != self.expected_sequence:
                     raise RuntimeError(
@@ -559,11 +560,22 @@ class LiveStreamWorker(QThread):
                     )
                 self.expected_sequence = sequence + count
 
-                raw = np.frombuffer(payload[10:], dtype=">u2").copy()
+                if header[2] == 0x04:
+                    packed_bytes = np.frombuffer(payload[10:], dtype=np.uint8)
+                    packed_bytes = packed_bytes.reshape(-1, 3).astype(np.uint32)
+                    packed = ((packed_bytes[:, 0] << 16) |
+                              (packed_bytes[:, 1] << 8) |
+                              packed_bytes[:, 2])
+                    ch1_raw = ((packed >> 12) & 0x0FFF).astype(np.uint16)
+                    ch2_raw = (packed & 0x0FFF).astype(np.uint16)
+                else:
+                    raw = np.frombuffer(payload[10:], dtype=">u2").copy()
+                    ch1_raw = raw[0::2]
+                    ch2_raw = raw[1::2]
                 if first_pending_sequence is None:
                     first_pending_sequence = sequence
-                pending_ch1.append(raw[0::2])
-                pending_ch2.append(raw[1::2])
+                pending_ch1.append(ch1_raw)
+                pending_ch2.append(ch2_raw)
                 pending_count += count
                 if pending_count >= self.UI_BLOCK_SAMPLES:
                     self.capture_ready.emit({

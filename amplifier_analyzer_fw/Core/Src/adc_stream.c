@@ -5,18 +5,18 @@
 
 #define ADC_STREAM_RING_SIZE 2048U
 #define ADC_STREAM_USB_CHUNK 512U
-#define ADC_STREAM_MAX_FS_HZ 100000U
+#define ADC_STREAM_MAX_FS_HZ 200000U
 #define ADC_STREAM_META_BYTES 10U
 #define ADC_STREAM_FRAME_BYTES \
-    (5U + ADC_STREAM_META_BYTES + ADC_STREAM_USB_CHUNK * 4U + 1U)
+    (5U + ADC_STREAM_META_BYTES + ADC_STREAM_USB_CHUNK * 3U + 1U)
 
 static ads7861_t *stream_dev;
 static volatile uint8_t stream_running;
 static volatile uint8_t dma_word_state;
 static volatile uint8_t dma_rx[4];
 static uint8_t dma_dummy;
-static volatile uint16_t raw_word_a[ADC_STREAM_RING_SIZE];
-static volatile uint16_t raw_word_b[ADC_STREAM_RING_SIZE];
+static volatile uint32_t transport_ring[ADC_STREAM_RING_SIZE]
+    __attribute__((aligned(4)));
 static volatile uint16_t raw_chunk_sequence[
     ADC_STREAM_RING_SIZE / ADC_STREAM_USB_CHUNK];
 static volatile uint32_t ring_write_count;
@@ -27,12 +27,19 @@ static volatile uint8_t usb_output_enabled;
 static volatile uint8_t stream_data_ready;
 static uint32_t usb_next_sequence;
 static uint8_t usb_sequence_valid;
-static uint8_t usb_frames[2][ADC_STREAM_FRAME_BYTES];
+static uint8_t usb_frames[2][ADC_STREAM_FRAME_BYTES + 4U]
+    __attribute__((aligned(4)));
 static uint8_t usb_build_index;
 static uint8_t usb_pending_valid;
 static uint8_t usb_pending_index;
 static uint16_t usb_pending_len;
 static volatile adc_stream_stats_t stream_stats;
+
+static inline uint8_t *adc_stream_usb_frame(uint8_t index)
+{
+    /* Keep spare leading bytes so both ping-pong rows retain alignment. */
+    return &usb_frames[index][1];
+}
 
 static inline void adc_stream_pulse_convst(void)
 {
@@ -57,11 +64,12 @@ static void adc_stream_dma_configure(void)
 
     DMA1_Channel4->CPAR = (uint32_t)&SPI2->DR;
     DMA1_Channel4->CMAR = (uint32_t)dma_rx;
-    DMA1_Channel4->CCR = DMA_CCR_MINC | DMA_CCR_HTIE | DMA_CCR_PL_1;
+    DMA1_Channel4->CCR = DMA_CCR_MINC | DMA_CCR_HTIE |
+                         DMA_CCR_PL_1 | DMA_CCR_PL_0;
 
     DMA1_Channel5->CPAR = (uint32_t)&SPI2->DR;
     DMA1_Channel5->CMAR = (uint32_t)&dma_dummy;
-    DMA1_Channel5->CCR = DMA_CCR_DIR | DMA_CCR_PL_1;
+    DMA1_Channel5->CCR = DMA_CCR_DIR | DMA_CCR_PL_1 | DMA_CCR_PL_0;
 
     __HAL_SPI_ENABLE(stream_dev->hspi);
     SPI2->CR2 |= SPI_CR2_RXDMAEN | SPI_CR2_TXDMAEN;
@@ -225,6 +233,10 @@ static inline void adc_stream_finish_pair(void)
 {
     uint16_t word_a;
     uint16_t word_b;
+    uint16_t vin;
+    uint16_t vout;
+    uint32_t packed;
+    uint32_t chunk_index;
     uint32_t write_index;
 
     DMA1->IFCR = DMA_IFCR_CGIF4 | DMA_IFCR_CGIF5;
@@ -235,17 +247,34 @@ static inline void adc_stream_finish_pair(void)
     word_b = (uint16_t)((((uint16_t)dma_rx[2] << 8) | dma_rx[3]) << 1);
     stream_dev->convst_port->BRR = stream_dev->convst_pin;
 
+    if ((word_a & 0x4000U) != 0U && (word_b & 0x4000U) == 0U) {
+        uint16_t wt = word_a; word_a = word_b; word_b = wt;
+    }
+    if ((word_a & 0xC003U) != 0x0000U ||
+        (word_b & 0xC003U) != 0x4000U) {
+        stream_stats.invalid_frame++;
+        stream_dev->cs_port->BSRR = stream_dev->cs_pin;
+        dma_word_state = 0U;
+        return;
+    }
+    vin = (uint16_t)(((word_b >> 2) & 0x0FFFU) ^ 0x0800U);
+    vout = (uint16_t)(((word_a >> 2) & 0x0FFFU) ^ 0x0800U);
+    packed = ((uint32_t)vin << 12) | (uint32_t)vout;
+
     write_index = ring_write_count & (ADC_STREAM_RING_SIZE - 1U);
     if ((ring_write_count - ring_read_count) >= ADC_STREAM_RING_SIZE) {
         ring_read_count += ADC_STREAM_USB_CHUNK;
         stream_stats.ring_overwrite += ADC_STREAM_USB_CHUNK;
     }
     if ((write_index & (ADC_STREAM_USB_CHUNK - 1U)) == 0U) {
-        raw_chunk_sequence[write_index / ADC_STREAM_USB_CHUNK] =
+        chunk_index = write_index / ADC_STREAM_USB_CHUNK;
+        raw_chunk_sequence[chunk_index] =
             (uint16_t)active_sample_sequence;
+    } else {
+        chunk_index = write_index / ADC_STREAM_USB_CHUNK;
     }
-    raw_word_a[write_index] = word_a;
-    raw_word_b[write_index] = word_b;
+    (void)chunk_index;
+    transport_ring[write_index] = packed;
     ring_write_count++;
     stream_stats.produced++;
     if ((ring_write_count - ring_read_count) >= ADC_STREAM_USB_CHUNK) {
@@ -333,7 +362,7 @@ __attribute__((optimize("O3"))) void adc_stream_usb_service(void)
 
     if (usb_pending_valid != 0U) {
         send_started = DWT->CYCCNT;
-        if (protocol_send_raw_async(usb_frames[usb_pending_index],
+        if (protocol_send_raw_async(adc_stream_usb_frame(usb_pending_index),
                                     usb_pending_len) == 0U) {
             return;
         }
@@ -347,7 +376,7 @@ __attribute__((optimize("O3"))) void adc_stream_usb_service(void)
 
     if (stream_data_ready == 0U) return;
 
-    frame = usb_frames[usb_build_index];
+    frame = adc_stream_usb_frame(usb_build_index);
 
     __disable_irq();
     available = ring_write_count - ring_read_count;
@@ -377,50 +406,44 @@ __attribute__((optimize("O3"))) void adc_stream_usb_service(void)
         usb_sequence_valid = 1U;
     }
 
-    /* Parse raw frames in thread context with timer/DMA interrupts enabled. */
+    /* Pack two lossless 12-bit channels into three bytes per sample. */
     pos = 15U;
-    for (uint16_t i = 0U; i < count; i++) {
-        uint32_t index = (read_start + i) & (ADC_STREAM_RING_SIZE - 1U);
-        uint16_t word_a;
-        uint16_t word_b;
-        uint16_t vin;
-        uint16_t vout;
-
-        word_a = raw_word_a[index];
-        word_b = raw_word_b[index];
-        if ((word_a & 0x4000U) != 0U && (word_b & 0x4000U) == 0U) {
-            uint16_t wt = word_a; word_a = word_b; word_b = wt;
+    {
+        uint32_t ring_index = read_start & (ADC_STREAM_RING_SIZE - 1U);
+        uint32_t xor_words = 0U;
+        uint32_t *destination = (uint32_t *)&frame[pos];
+        for (uint16_t i = 0U; i < count; i += 4U) {
+            uint32_t p0 = transport_ring[ring_index + i];
+            uint32_t p1 = transport_ring[ring_index + i + 1U];
+            uint32_t p2 = transport_ring[ring_index + i + 2U];
+            uint32_t p3 = transport_ring[ring_index + i + 3U];
+            uint32_t w0 = (p0 >> 16) | (p0 & 0x00FF00U) |
+                          ((p0 & 0xFFU) << 16) | ((p1 >> 16) << 24);
+            uint32_t w1 = ((p1 >> 8) & 0xFFU) |
+                          ((p1 & 0xFFU) << 8) |
+                          ((p2 >> 16) << 16) |
+                          (p2 & 0x00FF00U) << 16;
+            uint32_t w2 = (p2 & 0xFFU) |
+                          ((p3 >> 16) << 8) |
+                          (p3 & 0x00FF00U) << 8 |
+                          (p3 & 0xFFU) << 24;
+            destination[0] = w0;
+            destination[1] = w1;
+            destination[2] = w2;
+            destination += 3;
+            xor_words ^= w0 ^ w1 ^ w2;
         }
-        /* Pair 0 strict framing: A status 00, B status 01, tail 00. */
-        if ((word_a & 0xC003U) != 0x0000U ||
-            (word_b & 0xC003U) != 0x4000U) {
-            stream_stats.invalid_frame++;
-            count = i;
-            break;
-        }
-        /* ADS data is signed two's complement. XOR its sign bit converts it
-         * directly to the unsigned 0..4095 transport code used by the app. */
-        vin = (uint16_t)(((word_b >> 2) & 0x0FFFU) ^ 0x0800U);
-        vout = (uint16_t)(((word_a >> 2) & 0x0FFFU) ^ 0x0800U);
-        {
-            uint8_t byte0 = (uint8_t)(vin >> 8);
-            uint8_t byte1 = (uint8_t)vin;
-            uint8_t byte2 = (uint8_t)(vout >> 8);
-            uint8_t byte3 = (uint8_t)vout;
-            frame[pos++] = byte0;
-            frame[pos++] = byte1;
-            frame[pos++] = byte2;
-            frame[pos++] = byte3;
-            data_crc ^= byte0 ^ byte1 ^ byte2 ^ byte3;
-        }
+        data_crc = (uint8_t)xor_words ^ (uint8_t)(xor_words >> 8) ^
+                   (uint8_t)(xor_words >> 16) ^ (uint8_t)(xor_words >> 24);
+        pos = (uint16_t)(pos + count * 3U);
     }
     if (count == 0U) return;
     usb_next_sequence = first_sequence + count;
 
-    payload_len = (uint16_t)(ADC_STREAM_META_BYTES + count * 4U);
+    payload_len = (uint16_t)(ADC_STREAM_META_BYTES + count * 3U);
     frame[0] = PKT_HEADER1;
     frame[1] = PKT_HEADER2;
-    frame[2] = FRAME_TYPE_OSC_STREAM;
+    frame[2] = FRAME_TYPE_OSC_PACKED12;
     frame[3] = (uint8_t)(payload_len >> 8);
     frame[4] = (uint8_t)payload_len;
     frame[5] = (uint8_t)(first_sequence >> 24);

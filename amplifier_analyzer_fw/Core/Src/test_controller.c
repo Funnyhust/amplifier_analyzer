@@ -34,6 +34,9 @@ static uint16_t last_adc_word_b = 0U;
 #define DAC_MAX_ISR_RATE_HZ 50000U
 uint32_t adc_dual_buffer[MAX_ADC_BUF]; // Interleaved ADC1/ADC2 samples
 uint16_t dac_lut[MAX_DAC_LUT];
+static uint16_t dac_dma_frames[MAX_DAC_LUT] __attribute__((aligned(4)));
+static uint32_t dac_cs_set_word = GPIO_PIN_4;
+static uint32_t dac_cs_reset_word = (uint32_t)GPIO_PIN_4 << 16;
 uint32_t dac_lut_size = 256;
 static volatile uint8_t dac_stream_running = 0U;
 static volatile uint16_t dac_stream_index = 0U;
@@ -201,9 +204,17 @@ static void test_controller_generate_lut(void) {
 
 static void test_controller_dac_stream_stop(void) {
 #if defined(STM32F103xB) && (ACTIVE_MODE == MODE_NORMAL)
-    TIM3->DIER &= ~TIM_DIER_UIE;
+    uint32_t guard = 1000U;
+    TIM3->DIER = 0U;
     TIM3->CR1 &= ~TIM_CR1_CEN;
     HAL_NVIC_DisableIRQ(TIM3_IRQn);
+    HAL_NVIC_DisableIRQ(DMA1_Channel3_IRQn);
+    DMA1_Channel3->CCR &= ~DMA_CCR_EN;
+    DMA1_Channel2->CCR &= ~DMA_CCR_EN;
+    DMA1_Channel6->CCR &= ~DMA_CCR_EN;
+    DMA1->IFCR = DMA_IFCR_CGIF2 | DMA_IFCR_CGIF3 | DMA_IFCR_CGIF6;
+    while ((SPI1->SR & SPI_SR_BSY) != 0U && --guard != 0U) {}
+    GPIOA->BSRR = GPIO_PIN_4;
     mcp4822_flush_isr();
 #endif
     dac_stream_running = 0U;
@@ -218,6 +229,8 @@ static uint8_t test_controller_dac_stream_start(void) {
     uint32_t prescaler;
     uint32_t counter_clock;
     uint32_t period_ticks;
+    uint8_t gain = current_config.dac_gain == 2U ? MCP4822_GAIN_X2
+                                                  : MCP4822_GAIN_X1;
 
     if (current_config.fs == 0U || current_config.freq == 0U ||
         dac_lut_size == 0U) return 0U;
@@ -233,8 +246,7 @@ static uint8_t test_controller_dac_stream_start(void) {
     dac_update_hz = current_config.freq * dac_lut_size;
     if (mcp4822_write_raw(
             MCP4822_CHANNEL_A,
-            current_config.dac_gain == 2U ? MCP4822_GAIN_X2
-                                          : MCP4822_GAIN_X1,
+            gain,
             dac_lut[0]) != MCP4822_OK) {
         return 0U;
     }
@@ -248,22 +260,62 @@ static uint8_t test_controller_dac_stream_start(void) {
     if (prescaler > 65535U) return 0U;
     counter_clock = timer_clock / (prescaler + 1U);
     period_ticks = (counter_clock + dac_update_hz / 2U) / dac_update_hz;
-    if (period_ticks == 0U || period_ticks > 65536U) return 0U;
+    if (period_ticks < 32U || period_ticks > 65536U) return 0U;
+
+    for (uint32_t i = 0U; i < dac_lut_size; i++) {
+        uint32_t source_index = i + 1U;
+        if (source_index >= dac_lut_size) source_index = 0U;
+        dac_dma_frames[i] = mcp4822_build_frame(
+            MCP4822_CHANNEL_A, gain, dac_lut[source_index]);
+    }
 
     __HAL_RCC_TIM3_CLK_ENABLE();
+    __HAL_RCC_DMA1_CLK_ENABLE();
+    DMA1_Channel3->CCR &= ~DMA_CCR_EN;
+    DMA1_Channel2->CCR &= ~DMA_CCR_EN;
+    DMA1_Channel6->CCR &= ~DMA_CCR_EN;
+    DMA1->IFCR = DMA_IFCR_CGIF2 | DMA_IFCR_CGIF3 | DMA_IFCR_CGIF6;
+
+    DMA1_Channel3->CPAR = (uint32_t)&SPI1->DR;
+    DMA1_Channel3->CMAR = (uint32_t)dac_dma_frames;
+    DMA1_Channel3->CNDTR = dac_lut_size;
+    DMA1_Channel3->CCR = DMA_CCR_DIR | DMA_CCR_MINC | DMA_CCR_CIRC |
+                         DMA_CCR_PSIZE_0 | DMA_CCR_MSIZE_0 |
+                         DMA_CCR_TCIE | DMA_CCR_PL_0;
+
+    DMA1_Channel6->CPAR = (uint32_t)&GPIOA->BSRR;
+    DMA1_Channel6->CMAR = (uint32_t)&dac_cs_set_word;
+    DMA1_Channel6->CNDTR = 1U;
+    DMA1_Channel6->CCR = DMA_CCR_DIR | DMA_CCR_CIRC |
+                         DMA_CCR_PSIZE_1 | DMA_CCR_MSIZE_1 | DMA_CCR_PL_0;
+
+    DMA1_Channel2->CPAR = (uint32_t)&GPIOA->BSRR;
+    DMA1_Channel2->CMAR = (uint32_t)&dac_cs_reset_word;
+    DMA1_Channel2->CNDTR = 1U;
+    DMA1_Channel2->CCR = DMA_CCR_DIR | DMA_CCR_CIRC |
+                         DMA_CCR_PSIZE_1 | DMA_CCR_MSIZE_1 | DMA_CCR_PL_0;
+
     TIM3->CR1 = 0U;
     TIM3->PSC = (uint16_t)prescaler;
     TIM3->ARR = (uint16_t)(period_ticks - 1U);
+    TIM3->CCR1 = (uint16_t)(period_ticks / 2U);
+    TIM3->CCR3 = (uint16_t)(period_ticks - 8U);
+    TIM3->CCMR1 = 0U;
+    TIM3->CCMR2 = 0U;
+    TIM3->CCER = 0U;
     TIM3->CNT = 0U;
     TIM3->EGR = TIM_EGR_UG;
     TIM3->SR = 0U;
 
-    dac_stream_index = (dac_lut_size > 1U) ? 1U : 0U;
+    GPIOA->BSRR = GPIO_PIN_4;
+    SPI1->CR1 |= SPI_CR1_SPE;
+    DMA1_Channel3->CCR |= DMA_CCR_EN;
+    DMA1_Channel2->CCR |= DMA_CCR_EN;
+    DMA1_Channel6->CCR |= DMA_CCR_EN;
     dac_stream_running = 1U;
-    /* ADC timing is stricter: allow its timer/DMA IRQs to preempt DAC writes. */
-    HAL_NVIC_SetPriority(TIM3_IRQn, 1U, 0U);
-    HAL_NVIC_EnableIRQ(TIM3_IRQn);
-    TIM3->DIER = TIM_DIER_UIE;
+    HAL_NVIC_SetPriority(DMA1_Channel3_IRQn, 1U, 0U);
+    HAL_NVIC_EnableIRQ(DMA1_Channel3_IRQn);
+    TIM3->DIER = TIM_DIER_UDE | TIM_DIER_CC1DE | TIM_DIER_CC3DE;
     TIM3->CR1 = TIM_CR1_CEN;
     return 1U;
 #else
@@ -298,6 +350,23 @@ void test_controller_dac_timer_irq(void) {
 
 uint8_t test_controller_is_dac_stream_running(void) {
     return dac_stream_running;
+}
+
+void test_controller_dac_dma_irq(void) {
+#if defined(STM32F103xB) && (ACTIVE_MODE == MODE_NORMAL)
+    uint32_t isr = DMA1->ISR;
+    if ((isr & DMA_ISR_TEIF3) != 0U) {
+        DMA1->IFCR = DMA_IFCR_CGIF3;
+        mcp4822_account_dma_error();
+        test_controller_dac_stream_stop();
+        return;
+    }
+    if ((isr & DMA_ISR_TCIF3) != 0U) {
+        DMA1->IFCR = DMA_IFCR_CTCIF3;
+        mcp4822_account_dma_cycle(
+            dac_lut_size, dac_dma_frames[dac_lut_size - 1U]);
+    }
+#endif
 }
 
 uint32_t test_controller_get_dac_update_hz(void) {

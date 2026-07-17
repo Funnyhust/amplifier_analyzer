@@ -143,6 +143,15 @@ void mcp4822_flush_isr(void) {
 #endif
 }
 
+void mcp4822_account_dma_cycle(uint32_t frames, uint16_t last_frame) {
+    mcp4822_tx_ok_count += frames;
+    mcp4822_last_frame = last_frame;
+}
+
+void mcp4822_account_dma_error(void) {
+    mcp4822_tx_error_count++;
+}
+
 MCP4822_Status_t mcp4822_set_voltage_mv(uint8_t channel, uint8_t gain_x2,
                                         float voltage_mv) {
     uint16_t code = calibration_voltage_to_dac_code(voltage_mv, gain_x2 ? 2 : 1);

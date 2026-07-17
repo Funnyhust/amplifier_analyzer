@@ -9,7 +9,8 @@
 typedef enum {
     FRAME_TYPE_OSC_STREAM  = 0x01,
     FRAME_TYPE_BODE        = 0x02,
-    FRAME_TYPE_OSC_CAPTURE = 0x03
+    FRAME_TYPE_OSC_CAPTURE = 0x03,
+    FRAME_TYPE_OSC_PACKED12 = 0x04
 } FrameType_t;
 
 #pragma pack(push, 1)

@@ -534,3 +534,12 @@ Chưa đạt 200 kSPS continuous. Giới hạn hiện tại không phải do ri�
 - Vin raw trong soak `1097..1590`. Worst observed `BUILD_CYC=347865`, `SEND_CYC=5714`; block 512 tại 100 kSPS có ngân sách khoảng 368640 cycles, vì vậy đã đạt nhưng biên timing còn khoảng vài phần trăm ở worst case.
 - App live stream nâng lên 100 kSPS. Đây là mục tiêu continuous end-to-end đã chứng minh với DAC update 50 kHz, không còn là giá trị lý thuyết.
 - Smoke test `LiveStreamWorker` thật ở 100 kSPS trong 3 s: 558 UI block/285696 mẫu, worker error 0, QThread stop bình thường; firmware sau stop `OVERRUN=0, INVALID=0, OVERWRITE=0`.
+
+### 15.9 Checkpoint 110 kSPS và DAC timer-DMA
+
+- Continuous stream dùng frame type `0x04`: hai kênh 12-bit được pack lossless thành 3 byte/mẫu; app vẫn nhận tương thích frame `0x01` cũ.
+- ISR ADC chỉ validate/chuyển code và lưu một word 24-bit trong ring. Main pack bốn mẫu thành ba word 32-bit aligned, tính CRC theo word; USB payload giảm từ 4 xuống 3 byte/mẫu.
+- DAC không còn TIM3 IRQ theo từng điểm. TIM3_CH1/DMA1_CH6 đưa CS high, TIM3_CH3/DMA1_CH2 đưa CS low, TIM3 update/DMA1_CH3 ghi frame 16-bit vào SPI1 DR. Chỉ DMA TC mỗi chu kỳ LUT tạo IRQ (~200 IRQ/s ở sine 200 Hz).
+- DMA ADC đặt very-high, DMA DAC medium để bảo vệ cửa sổ A/B. DAC DMA được xác nhận Vin raw `1100..1600`, FFT `199.967 Hz`, khoảng 50 kframe/s.
+- Soak ADC 110 kSPS + DAC update 50 kHz trong 30.004 s: host nhận `3297792` mẫu (`109911.8 SPS`), 6441 frame; CRC/sequence lỗi 0; firmware `PRODUCED=3298255, OVERRUN=0, INVALID=0, OVERWRITE=0`; DAC `TX_ERR=0`.
+- Build cuối checkpoint: RAM khoảng 89.5%, flash khoảng 87.1%. App live stream nâng lên 110 kSPS.

@@ -223,6 +223,11 @@ void DMA1_Channel4_IRQHandler(void)
   adc_stream_dma_irq();
 }
 
+void DMA1_Channel3_IRQHandler(void)
+{
+  test_controller_dac_dma_irq();
+}
+
 /* USER CODE BEGIN 1 */
 
 /* USER CODE END 1 */
