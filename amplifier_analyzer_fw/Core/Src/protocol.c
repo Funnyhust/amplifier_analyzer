@@ -47,6 +47,16 @@ void protocol_send_raw(uint8_t *data, uint16_t len) {
     (void)protocol_wait_tx_complete();
 }
 
+uint8_t protocol_send_raw_async(uint8_t *data, uint16_t len) {
+    USBD_CDC_HandleTypeDef *hcdc =
+        (USBD_CDC_HandleTypeDef *)hUsbDeviceFS.pClassData;
+
+    if (data == NULL || len == 0U || hcdc == NULL || hcdc->TxState != 0U) {
+        return 0U;
+    }
+    return (CDC_Transmit_FS(data, len) == USBD_OK) ? 1U : 0U;
+}
+
 void protocol_send_osc_data(uint8_t *data, uint16_t samples) {
     uint16_t payload_len = samples * 4; // 2 channels, each 2 bytes
     

@@ -499,3 +499,12 @@ Chưa đạt 200 kSPS continuous. Giới hạn hiện tại không phải do ri�
 - Soak ADC 65 kSPS + DAC update 50 kHz trong 30.003 s: host nhận `1949184` mẫu (`64966.6 SPS`), 3807 frame; CRC/sequence lỗi 0; firmware `PRODUCED=1950166, OVERRUN=0, INVALID=0, OVERWRITE=0`; DAC `TX_ERR=0`.
 - Vin raw `1096..1592`, xác nhận DAC 16-bit vẫn phát đúng sine. `BUILD_CYC_MAX=314601`, `SEND_CYC_MAX=215592`.
 - App live stream nâng lên 65 kSPS. Đây là checkpoint +10 kSPS thứ hai.
+
+### 15.5 Checkpoint 75 kSPS với DAC 50 kHz
+
+- CRC XOR được tính ngay khi pack sample, bỏ lần quét lại toàn bộ payload; hot USB service compile riêng ở `O3`.
+- `protocol_send_raw_async()` và hai frame buffer cho phép USB gửi buffer A trong khi main build buffer B. Chỉ giữ tối đa một frame pending, không sửa buffer USB đang sở hữu.
+- CDC RX/TX buffer mặc định giảm 1024 xuống 512 byte; frame stream dùng double-buffer riêng. Build RAM `18304/20480 = 89.4%`, flash khoảng 86.0%.
+- Soak ADC 75 kSPS + DAC update 50 kHz trong 30.003 s: host nhận `2249728` mẫu (`74982.3 SPS`), 4394 frame; CRC/sequence lỗi 0; firmware `PRODUCED=2250550, OVERRUN=0, INVALID=0, OVERWRITE=0`; DAC `TX_ERR=0`.
+- Vin raw `1096..1590`. Async USB giảm `SEND_CYC_MAX` xuống 7032 cycles; `BUILD_CYC_MAX=277777`.
+- App live stream nâng lên 75 kSPS. Đây là checkpoint +10 kSPS thứ ba.

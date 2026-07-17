@@ -26,5 +26,6 @@ uint8_t protocol_calculate_crc(uint8_t *data, uint16_t len);
 // Khai báo hàm gửi dữ liệu (sẽ được định nghĩa trong protocol.c)
 void protocol_send_osc_data(uint8_t *data, uint16_t samples);
 void protocol_send_raw(uint8_t *data, uint16_t len);
+uint8_t protocol_send_raw_async(uint8_t *data, uint16_t len);
 
 #endif

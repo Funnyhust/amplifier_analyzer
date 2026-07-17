@@ -481,7 +481,7 @@ class LiveStreamWorker(QThread):
 
     # Proven end-to-end for 30 s while the DAC updates at 50 kHz:
     # no CRC/sequence loss and no firmware overrun/invalid/overwrite.
-    STREAM_FS = 65000
+    STREAM_FS = 75000
     UI_BLOCK_SAMPLES = 512
 
     def __init__(self, serial_conn):

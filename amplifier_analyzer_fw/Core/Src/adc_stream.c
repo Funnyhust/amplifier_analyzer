@@ -6,6 +6,9 @@
 #define ADC_STREAM_RING_SIZE 1024U
 #define ADC_STREAM_USB_CHUNK 512U
 #define ADC_STREAM_MAX_FS_HZ 100000U
+#define ADC_STREAM_META_BYTES 10U
+#define ADC_STREAM_FRAME_BYTES \
+    (5U + ADC_STREAM_META_BYTES + ADC_STREAM_USB_CHUNK * 4U + 1U)
 
 typedef struct {
     uint16_t word_a;
@@ -27,6 +30,11 @@ static volatile uint8_t usb_output_enabled;
 static volatile uint8_t stream_data_ready;
 static uint32_t usb_next_sequence;
 static uint8_t usb_sequence_valid;
+static uint8_t usb_frames[2][ADC_STREAM_FRAME_BYTES];
+static uint8_t usb_build_index;
+static uint8_t usb_pending_valid;
+static uint8_t usb_pending_index;
+static uint16_t usb_pending_len;
 static volatile adc_stream_stats_t stream_stats;
 
 static inline void adc_stream_pulse_convst(void)
@@ -83,6 +91,10 @@ void adc_stream_init(ads7861_t *dev)
     stream_data_ready = 0U;
     usb_next_sequence = 0U;
     usb_sequence_valid = 0U;
+    usb_build_index = 0U;
+    usb_pending_valid = 0U;
+    usb_pending_index = 0U;
+    usb_pending_len = 0U;
     memset((void *)&stream_stats, 0, sizeof(stream_stats));
 }
 
@@ -108,6 +120,10 @@ uint8_t adc_stream_start(uint32_t sample_rate_hz)
     stream_data_ready = 0U;
     usb_next_sequence = 0U;
     usb_sequence_valid = 0U;
+    usb_build_index = 0U;
+    usb_pending_valid = 0U;
+    usb_pending_index = 0U;
+    usb_pending_len = 0U;
     stream_stats.requested_fs = sample_rate_hz;
 
     /*
@@ -196,6 +212,7 @@ void adc_stream_stop(void)
     HAL_NVIC_ClearPendingIRQ(TIM2_IRQn);
     stream_running = 0U;
     usb_output_enabled = 0U;
+    usb_pending_valid = 0U;
     dma_word_state = 0U;
     stream_stats.running = 0U;
     if (stream_dev != NULL) {
@@ -289,10 +306,9 @@ void adc_stream_set_usb_output(uint8_t enabled)
     usb_output_enabled = enabled ? 1U : 0U;
 }
 
-void adc_stream_usb_service(void)
+__attribute__((optimize("O3"))) void adc_stream_usb_service(void)
 {
-    enum { META_BYTES = 10U };
-    static uint8_t frame[5U + META_BYTES + ADC_STREAM_USB_CHUNK * 4U + 1U];
+    uint8_t *frame;
     uint32_t first_sequence;
     uint32_t read_start = 0U;
     uint32_t fs;
@@ -305,9 +321,27 @@ void adc_stream_usb_service(void)
     uint32_t build_started;
     uint32_t send_started;
     uint32_t elapsed_cycles;
+    uint8_t data_crc = 0U;
 
-    if (stream_running == 0U || usb_output_enabled == 0U ||
-        stream_data_ready == 0U) return;
+    if (stream_running == 0U || usb_output_enabled == 0U) return;
+
+    if (usb_pending_valid != 0U) {
+        send_started = DWT->CYCCNT;
+        if (protocol_send_raw_async(usb_frames[usb_pending_index],
+                                    usb_pending_len) == 0U) {
+            return;
+        }
+        elapsed_cycles = DWT->CYCCNT - send_started;
+        if (elapsed_cycles > stream_stats.usb_send_cycles_max) {
+            stream_stats.usb_send_cycles_max = elapsed_cycles;
+        }
+        usb_pending_valid = 0U;
+        usb_build_index ^= 1U;
+    }
+
+    if (stream_data_ready == 0U) return;
+
+    frame = usb_frames[usb_build_index];
 
     __disable_irq();
     available = ring_write_count - ring_read_count;
@@ -316,8 +350,7 @@ void adc_stream_usb_service(void)
         read_start = ring_read_count;
         read_index = read_start & (ADC_STREAM_RING_SIZE - 1U);
         first_sequence_low = raw_ring[read_index].sequence_low;
-        /* Reserve before parsing. Producer needs >=768 new samples before it
-         * can wrap onto this 256-sample region. */
+        /* Reserve before parsing; the other USB frame buffer may be in flight. */
         ring_read_count += ADC_STREAM_USB_CHUNK;
         count = ADC_STREAM_USB_CHUNK;
     }
@@ -370,15 +403,22 @@ void adc_stream_usb_service(void)
          * directly to the unsigned 0..4095 transport code used by the app. */
         vin = (uint16_t)(((word_b >> 2) & 0x0FFFU) ^ 0x0800U);
         vout = (uint16_t)(((word_a >> 2) & 0x0FFFU) ^ 0x0800U);
-        frame[pos++] = (uint8_t)(vin >> 8);
-        frame[pos++] = (uint8_t)vin;
-        frame[pos++] = (uint8_t)(vout >> 8);
-        frame[pos++] = (uint8_t)vout;
+        {
+            uint8_t byte0 = (uint8_t)(vin >> 8);
+            uint8_t byte1 = (uint8_t)vin;
+            uint8_t byte2 = (uint8_t)(vout >> 8);
+            uint8_t byte3 = (uint8_t)vout;
+            frame[pos++] = byte0;
+            frame[pos++] = byte1;
+            frame[pos++] = byte2;
+            frame[pos++] = byte3;
+            data_crc ^= byte0 ^ byte1 ^ byte2 ^ byte3;
+        }
     }
     if (count == 0U) return;
     usb_next_sequence = first_sequence + count;
 
-    payload_len = (uint16_t)(META_BYTES + count * 4U);
+    payload_len = (uint16_t)(ADC_STREAM_META_BYTES + count * 4U);
     frame[0] = PKT_HEADER1;
     frame[1] = PKT_HEADER2;
     frame[2] = FRAME_TYPE_OSC_STREAM;
@@ -394,13 +434,20 @@ void adc_stream_usb_service(void)
     frame[12] = (uint8_t)fs;
     frame[13] = (uint8_t)(count >> 8);
     frame[14] = (uint8_t)count;
-    frame[pos] = protocol_calculate_crc(&frame[5], payload_len);
+    for (uint16_t i = 5U; i < 15U; i++) data_crc ^= frame[i];
+    frame[pos] = data_crc;
     send_started = DWT->CYCCNT;
     elapsed_cycles = send_started - build_started;
     if (elapsed_cycles > stream_stats.usb_build_cycles_max) {
         stream_stats.usb_build_cycles_max = elapsed_cycles;
     }
-    protocol_send_raw(frame, (uint16_t)(pos + 1U));
+    if (protocol_send_raw_async(frame, (uint16_t)(pos + 1U)) != 0U) {
+        usb_build_index ^= 1U;
+    } else {
+        usb_pending_valid = 1U;
+        usb_pending_index = usb_build_index;
+        usb_pending_len = (uint16_t)(pos + 1U);
+    }
     elapsed_cycles = DWT->CYCCNT - send_started;
     if (elapsed_cycles > stream_stats.usb_send_cycles_max) {
         stream_stats.usb_send_cycles_max = elapsed_cycles;
