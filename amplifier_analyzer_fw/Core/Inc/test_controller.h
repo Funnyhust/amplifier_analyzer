@@ -54,5 +54,6 @@ void test_controller_get_result(char *out_buf, uint16_t max_len);
 void test_controller_get_samples_bin(void);
 void test_controller_dac_timer_irq(void);
 uint8_t test_controller_is_dac_stream_running(void);
+uint32_t test_controller_get_dac_update_hz(void);
 
 #endif /* TEST_CONTROLLER_H */

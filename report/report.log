@@ -1,4 +1,4 @@
-This is XeTeX, Version 3.141592653-2.6-0.999997 (MiKTeX 25.12) (preloaded format=xelatex 2026.7.14)  15 JUL 2026 21:42
+This is XeTeX, Version 3.141592653-2.6-0.999997 (MiKTeX 25.12) (preloaded format=xelatex 2026.7.14)  17 JUL 2026 10:01
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -1020,7 +1020,19 @@ Chapter 3.
 Chapter 4.
 [9
 
-] [10] [11]
+] [10]
+Underfull \hbox (badness 10000) in paragraph at lines 422--423
+[]\TU/TimesNewRoman(0)/m/n/12 PlatformIO định nghĩa các environment \TU/lmtt/m/
+n/12 production\TU/TimesNewRoman(0)/m/n/12 , \TU/lmtt/m/n/12 usb_cdc_test \TU/T
+imesNewRoman(0)/m/n/12 và
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 432--432
+[]|\TU/TimesNewRoman(0)/m/n/12 Production
+ []
+
+[11]
 Chapter 5.
 File: images/app_waveform_current.png Graphic file (type bmp)
 <images/app_waveform_current.png>
@@ -1031,38 +1043,43 @@ File: images/app_measurements_current.png Graphic file (type bmp)
 <images/app_measurements_current.png>
  [13] [14]
 Chapter 6.
+
+Underfull \hbox (badness 10000) in paragraph at lines 509--509
+[]|\TU/TimesNewRoman(0)/m/n/12 20/20 chu kỳ STOP–RANGE–CONFIG–
+ []
+
 [15
 
-] [16] [17]
+] [16] [17] [18]
 Chapter 7.
-[18
+[19
 
-] [19]
-Underfull \hbox (badness 10000) in paragraph at lines 602--603
+] [20]
+Underfull \hbox (badness 10000) in paragraph at lines 616--617
 []\TU/TimesNewRoman(0)/m/n/12 STMicroelectronics, \TU/TimesNewRoman(0)/m/it/12 
 RM0008: STM32F101xx, STM32F102xx, STM32F103xx,
  []
 
 
-Underfull \hbox (badness 2221) in paragraph at lines 603--604
+Underfull \hbox (badness 2221) in paragraph at lines 617--618
 []\TU/TimesNewRoman(0)/m/n/12 Microchip Technology Inc., \TU/TimesNewRoman(0)/m
 /it/12 MCP4802/4812/4822: 8/10/12-Bit Dual Voltage Out-
  []
 
 
-Underfull \hbox (badness 1558) in paragraph at lines 603--604
+Underfull \hbox (badness 1558) in paragraph at lines 617--618
 \TU/TimesNewRoman(0)/m/it/12 put Digital-to-Analog Converter with Internal VREF
  and SPI Interface\TU/TimesNewRoman(0)/m/n/12 , Datasheet
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 611--612
+Underfull \hbox (badness 10000) in paragraph at lines 625--626
 []\TU/TimesNewRoman(0)/m/n/12 C. Liechti, \TU/TimesNewRoman(0)/m/it/12 pySerial
  Documentation\TU/TimesNewRoman(0)/m/n/12 . [Online]. Available: [][]$[][][][][
 ] [] [] [] [][][][][][][][] []
  []
 
-[20
+[21
 
 ] (report.aux)
  ***********
@@ -1073,12 +1090,12 @@ Package rerunfilecheck Info: File `report.out' has not changed.
 (rerunfilecheck)             Checksum: 43DD31FB323E4994CED50342A0677AD8;10724.
  ) 
 Here is how much of TeX's memory you used:
- 26106 strings out of 402987
- 524419 string characters out of 5448110
- 987854 words of memory out of 5000000
- 54426 multiletter control sequences out of 15000+600000
+ 26108 strings out of 402987
+ 524473 string characters out of 5448110
+ 988869 words of memory out of 5000000
+ 54428 multiletter control sequences out of 15000+600000
  635549 words of font info for 98 fonts, out of 8000000 for 9000
  1348 hyphenation exceptions out of 8191
- 84i,14n,104p,618b,823s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 84i,14n,104p,827b,823s stack positions out of 10000i,1000n,20000p,200000b,200000s
 
-Output written on report.pdf (28 pages).
+Output written on report.pdf (29 pages).

@@ -18,14 +18,14 @@
 \contentsline {section}{\numberline {3.2}Kiến trúc tổng thể}{6}{section.3.2}%
 \contentsline {section}{\numberline {3.3}Thiết kế khối phát tín hiệu}{7}{section.3.3}%
 \contentsline {section}{\numberline {3.4}Thiết kế khối thu tín hiệu hai kênh}{7}{section.3.4}%
-\contentsline {section}{\numberline {3.5}Mạch điều hòa và lựa chọn range}{7}{section.3.5}%
+\contentsline {section}{\numberline {3.5}Mạch điều hòa và lựa chọn range}{8}{section.3.5}%
 \contentsline {section}{\numberline {3.6}Nguồn, kết nối và phân bổ chân}{8}{section.3.6}%
 \contentsline {chapter}{\numberline {4}THIẾT KẾ FIRMWARE VÀ GIAO THỨC TRUYỀN THÔNG}{9}{chapter.4}%
 \contentsline {section}{\numberline {4.1}Kiến trúc firmware STM32F103}{9}{section.4.1}%
 \contentsline {section}{\numberline {4.2}Điều khiển MCP4822 và ADS7861}{9}{section.4.2}%
 \contentsline {section}{\numberline {4.3}Thu thập, xử lý kết quả và calibration}{9}{section.4.3}%
 \contentsline {section}{\numberline {4.4}USB CDC và giao thức lệnh}{10}{section.4.4}%
-\contentsline {section}{\numberline {4.5}Giao thức truyền dữ liệu nhị phân}{10}{section.4.5}%
+\contentsline {section}{\numberline {4.5}Giao thức truyền dữ liệu nhị phân}{11}{section.4.5}%
 \contentsline {section}{\numberline {4.6}Tài nguyên và các chế độ kiểm thử}{11}{section.4.6}%
 \contentsline {chapter}{\numberline {5}THIẾT KẾ ỨNG DỤNG DESKTOP VÀ XỬ LÝ TÍN HIỆU}{12}{chapter.5}%
 \contentsline {section}{\numberline {5.1}Kiến trúc ứng dụng Signal Analyzer Pro}{12}{section.5.1}%
@@ -39,12 +39,12 @@
 \contentsline {section}{\numberline {6.2}Kiểm nghiệm USB CDC}{15}{section.6.2}%
 \contentsline {section}{\numberline {6.3}Kiểm nghiệm điều kiện lấy mẫu}{15}{section.6.3}%
 \contentsline {section}{\numberline {6.4}Kiểm nghiệm thuật toán đo}{16}{section.6.4}%
-\contentsline {section}{\numberline {6.5}Kiểm nghiệm quét Bode}{16}{section.6.5}%
+\contentsline {section}{\numberline {6.5}Kiểm nghiệm quét Bode}{17}{section.6.5}%
 \contentsline {section}{\numberline {6.6}Phân tích sai số}{17}{section.6.6}%
-\contentsline {section}{\numberline {6.7}Thảo luận}{17}{section.6.7}%
-\contentsline {chapter}{\numberline {7}KẾT LUẬN VÀ HƯỚNG PHÁT TRIỂN}{18}{chapter.7}%
-\contentsline {section}{\numberline {7.1}Kết luận}{18}{section.7.1}%
-\contentsline {section}{\numberline {7.2}Đánh giá mức độ hoàn thành}{18}{section.7.2}%
-\contentsline {section}{\numberline {7.3}Hạn chế của hệ thống}{18}{section.7.3}%
-\contentsline {section}{\numberline {7.4}Hướng phát triển}{18}{section.7.4}%
-\contentsline {chapter}{TÀI LIỆU THAM KHẢO}{19}{section.7.4}%
+\contentsline {section}{\numberline {6.7}Thảo luận}{18}{section.6.7}%
+\contentsline {chapter}{\numberline {7}KẾT LUẬN VÀ HƯỚNG PHÁT TRIỂN}{19}{chapter.7}%
+\contentsline {section}{\numberline {7.1}Kết luận}{19}{section.7.1}%
+\contentsline {section}{\numberline {7.2}Đánh giá mức độ hoàn thành}{19}{section.7.2}%
+\contentsline {section}{\numberline {7.3}Hạn chế của hệ thống}{19}{section.7.3}%
+\contentsline {section}{\numberline {7.4}Hướng phát triển}{20}{section.7.4}%
+\contentsline {chapter}{TÀI LIỆU THAM KHẢO}{20}{section.7.4}%

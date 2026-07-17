@@ -412,8 +412,8 @@ class LiveCaptureWorker(QThread):
 
     def run(self):
         try:
-            # Every live frame is a fresh hardware capture. The firmware stops
-            # its DAC stream, captures, ACKs, then resumes continuous output.
+            # Every live frame is a fresh finite ADC block while the firmware's
+            # DAC timer continues independently; repeated blocks drive the UI.
             self.serial_conn.write(b"START\n")
             self.serial_conn.flush()
             start_response = self.serial_conn.readline().decode("utf-8").strip()
@@ -1623,7 +1623,9 @@ class SignalAnalyzerApp(QMainWindow):
             self.calibration_value(f"adc2_r{range_index}_m", 1.0),
             self.calibration_value(f"adc2_r{range_index}_c", 0.0),
         )
-        fs = self.ana_spin_fs.value()
+        fs = float(device_result.get("fs_actual", self.ana_spin_fs.value()))
+        if fs <= 0.0:
+            fs = self.ana_spin_fs.value()
         t = np.arange(ch1.size, dtype=np.float64) / fs
         self.last_communication_ok = True
         self.last_data_complete = True
@@ -1631,7 +1633,7 @@ class SignalAnalyzerApp(QMainWindow):
         self.handle_samples(t, ch1, ch2, ch1_raw, ch2_raw)
 
     def handle_samples(self, t, ch1, ch2, ch1_raw=None, ch2_raw=None):
-        fs = self.ana_spin_fs.value()
+        fs = (1.0 / (t[1] - t[0])) if len(t) > 1 else self.ana_spin_fs.value()
         target_frequency = self.ana_spin_freq.value()
         self.update_error_metrics()
         ch1_metrics = analyze_channel(ch1, fs, target_frequency, ch1_raw)

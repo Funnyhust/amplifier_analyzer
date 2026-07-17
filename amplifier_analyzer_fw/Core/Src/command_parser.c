@@ -3,6 +3,7 @@
 #include "calibration.h"
 #include "range_control.h"
 #include "mcp4822.h"
+#include "ads7861.h"
 #include "config.h"
 #include "protocol.h"
 #include "usbd_cdc_if.h"
@@ -17,6 +18,9 @@ static uint16_t cmd_idx = 0;
 static volatile uint8_t pending_ready = 0U;
 
 extern USBD_HandleTypeDef hUsbDeviceFS;
+#if defined(STM32F103xB)
+extern ads7861_t g_ads7861;
+#endif
 
 static void send_response(const char *resp) {
     uint16_t len = strlen(resp);
@@ -134,7 +138,7 @@ void command_parser_execute(char *cmd_line) {
                  1U);
 #else
                  (unsigned int)current_config.freq,
-                 (unsigned int)current_config.fs,
+                 (unsigned int)test_controller_get_dac_update_hz(),
                  (unsigned int)test_controller_is_dac_stream_running());
 #endif
         send_response(dac_buf);
@@ -254,6 +258,175 @@ void command_parser_execute(char *cmd_line) {
 #else
         send_response("ERR:301,ADC_GPIO_DIAG_UNSUPPORTED\n");
 #endif
+    }
+    else if (strcmp(cmd_line, "ADC_READ_ONCE") == 0) {
+#if defined(STM32F103xB) && (ACTIVE_MODE != MODE_TEST_USB) && \
+    (ACTIVE_MODE != MODE_TEST_DAC)
+        ads7861_sample_pair_t sample;
+        unsigned int busy_before = (unsigned int)HAL_GPIO_ReadPin(
+            GPIOB, GPIO_PIN_10);
+        ads7861_status_t status = ads7861_read_pair(
+            &g_ads7861, ADS7861_PAIR_0, &sample);
+        unsigned int busy_after = (unsigned int)HAL_GPIO_ReadPin(
+            GPIOB, GPIO_PIN_10);
+        unsigned int strict = (unsigned int)(
+            ((sample.word_a & 0x0003U) == 0U) &&
+            ((sample.word_b & 0x0003U) == 0U) &&
+            (sample.status_a == 0U) && (sample.status_b == 1U));
+        char adc_buf[192];
+        snprintf(adc_buf, sizeof(adc_buf),
+                 "DATA:ERR=%u,W0=%04X,W1=%04X,RA=%d,RB=%d,SA=%u,SB=%u,VALID=%u,STRICT=%u,B0=%u,B1=%u\n",
+                 (unsigned int)status,
+                 sample.word_a, sample.word_b,
+                 (int)sample.ch_a_raw, (int)sample.ch_b_raw,
+                 (unsigned int)sample.status_a,
+                 (unsigned int)sample.status_b,
+                 (unsigned int)sample.valid, strict,
+                 busy_before, busy_after);
+        send_response(adc_buf);
+#else
+        send_response("ERR:301,ADC_READ_ONCE_UNSUPPORTED\n");
+#endif
+    }
+    else if (strcmp(cmd_line, "ADC_READ_TRIPLE") == 0 ||
+             strcmp(cmd_line, "ADC_READ_TRIPLE1") == 0) {
+#if defined(STM32F103xB) && (ACTIVE_MODE != MODE_TEST_USB) && \
+    (ACTIVE_MODE != MODE_TEST_DAC)
+        uint16_t words[3];
+        uint8_t ch[3] = {0U, 0U, 0U};
+        uint8_t ab[3] = {0U, 0U, 0U};
+        ads7861_pair_t pair = (strcmp(cmd_line, "ADC_READ_TRIPLE1") == 0)
+                                ? ADS7861_PAIR_1 : ADS7861_PAIR_0;
+        ads7861_status_t status = ads7861_debug_read_triplet(
+            &g_ads7861, pair, words);
+        for (uint8_t i = 0U; i < 3U; i++) {
+            (void)ads7861_parse_word(words[i], &ch[i], &ab[i]);
+        }
+        char adc_buf[64];
+        snprintf(adc_buf, sizeof(adc_buf),
+                 "DATA:E=%u,W=%04X,%04X,%04X,S=%u,%u,%u\n",
+                 (unsigned int)status,
+                 words[0], words[1], words[2],
+                 (unsigned int)((ch[0] << 1) | ab[0]),
+                 (unsigned int)((ch[1] << 1) | ab[1]),
+                 (unsigned int)((ch[2] << 1) | ab[2]));
+        send_response(adc_buf);
+#else
+        send_response("ERR:301,ADC_READ_TRIPLE_UNSUPPORTED\n");
+#endif
+    }
+    else if (strcmp(cmd_line, "ADC_BUSY_TRACE") == 0) {
+#if defined(STM32F103xB) && (ACTIVE_MODE != MODE_TEST_USB) && \
+    (ACTIVE_MODE != MODE_TEST_DAC)
+        uint16_t word = 0U;
+        uint16_t busy_mask = 0U;
+        uint8_t busy_before = 0U;
+        uint8_t busy_after_start = 0U;
+        uint8_t busy_after_word = 0U;
+        ads7861_status_t status = ads7861_debug_busy_trace(
+            &g_ads7861, ADS7861_PAIR_0, &word, &busy_mask,
+            &busy_before, &busy_after_start, &busy_after_word);
+        char adc_buf[96];
+        snprintf(adc_buf, sizeof(adc_buf),
+                 "DATA:E=%u,W=%04X,BM=%04X,B0=%u,BS=%u,B1=%u\n",
+                 (unsigned int)status, word, busy_mask,
+                 (unsigned int)busy_before,
+                 (unsigned int)busy_after_start,
+                 (unsigned int)busy_after_word);
+        send_response(adc_buf);
+#else
+        send_response("ERR:301,ADC_BUSY_TRACE_UNSUPPORTED\n");
+#endif
+    }
+    else if (strcmp(cmd_line, "ADC_SERIAL_TRACE0") == 0 ||
+             strcmp(cmd_line, "ADC_SERIAL_TRACE1") == 0 ||
+             strcmp(cmd_line, "ADC_SERIAL_NORD") == 0) {
+#if defined(STM32F103xB) && (ACTIVE_MODE != MODE_TEST_USB) && \
+    (ACTIVE_MODE != MODE_TEST_DAC)
+        uint32_t data_trace = 0U;
+        uint32_t busy_trace = 0U;
+        uint8_t pulse_start = (strcmp(cmd_line, "ADC_SERIAL_NORD") != 0)
+                                ? 1U : 0U;
+        ads7861_pair_t pair = (strcmp(cmd_line, "ADC_SERIAL_TRACE1") == 0)
+                                ? ADS7861_PAIR_1 : ADS7861_PAIR_0;
+        ads7861_status_t status = ads7861_debug_serial_trace(
+            &g_ads7861, pair, &data_trace, &busy_trace, pulse_start);
+        char adc_buf[80];
+        snprintf(adc_buf, sizeof(adc_buf),
+                 "DATA:E=%u,D=%06lX,BM=%05lX\n",
+                 (unsigned int)status,
+                 (unsigned long)data_trace,
+                 (unsigned long)busy_trace);
+        send_response(adc_buf);
+#else
+        send_response("ERR:301,ADC_SERIAL_TRACE_UNSUPPORTED\n");
+#endif
+    }
+    else if (strcmp(cmd_line, "ADC_FORCE_M1:0") == 0) {
+#if defined(STM32F103xB)
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_11, GPIO_PIN_RESET);
+        send_response("OK\n");
+#else
+        send_response("ERR:301,ADC_FORCE_M1_UNSUPPORTED\n");
+#endif
+    }
+    else if (strcmp(cmd_line, "ADC_FORCE_M1:1") == 0) {
+#if defined(STM32F103xB)
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_11, GPIO_PIN_SET);
+        send_response("OK\n");
+#else
+        send_response("ERR:301,ADC_FORCE_M1_UNSUPPORTED\n");
+#endif
+    }
+    else if (strcmp(cmd_line, "ADC_FORCE_M0:0") == 0) {
+#if defined(STM32F103xB) && (ACTIVE_MODE != MODE_TEST_USB) && \
+    (ACTIVE_MODE != MODE_TEST_DAC)
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_RESET);
+        send_response("OK\n");
+#else
+        send_response("ERR:301,ADC_FORCE_M0_UNSUPPORTED\n");
+#endif
+    }
+    else if (strcmp(cmd_line, "ADC_FORCE_M0:1") == 0) {
+#if defined(STM32F103xB) && (ACTIVE_MODE != MODE_TEST_USB) && \
+    (ACTIVE_MODE != MODE_TEST_DAC)
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_SET);
+        send_response("OK\n");
+#else
+        send_response("ERR:301,ADC_FORCE_M0_UNSUPPORTED\n");
+#endif
+    }
+    else if (strcmp(cmd_line, "ADC_SAMPLE_EDGE:RISING") == 0) {
+        ads7861_set_bitbang_sample_after_falling(0U);
+        send_response("OK\n");
+    }
+    else if (strcmp(cmd_line, "ADC_SAMPLE_EDGE:FALLING") == 0) {
+        ads7861_set_bitbang_sample_after_falling(1U);
+        send_response("OK\n");
+    }
+    else if (strcmp(cmd_line, "ADC_SAMPLE_EDGE:BEFORE") == 0) {
+        ads7861_set_bitbang_sample_after_falling(2U);
+        send_response("OK\n");
+    }
+    else if (strcmp(cmd_line, "ADC_SAMPLE_EDGE:SKIP1") == 0) {
+        ads7861_set_bitbang_sample_after_falling(3U);
+        send_response("OK\n");
+    }
+    else if (strcmp(cmd_line, "ADC_RD_RELEASE:0") == 0) {
+        ads7861_set_bitbang_rd_release_bit(0U);
+        send_response("OK\n");
+    }
+    else if (strcmp(cmd_line, "ADC_RD_RELEASE:1") == 0) {
+        ads7861_set_bitbang_rd_release_bit(1U);
+        send_response("OK\n");
+    }
+    else if (strcmp(cmd_line, "ADC_RD_RELEASE:2") == 0) {
+        ads7861_set_bitbang_rd_release_bit(2U);
+        send_response("OK\n");
+    }
+    else if (strcmp(cmd_line, "ADC_RD_RELEASE:15") == 0) {
+        ads7861_set_bitbang_rd_release_bit(15U);
+        send_response("OK\n");
     }
     else if (strcmp(cmd_line, "STOP") == 0) {
         test_controller_stop();

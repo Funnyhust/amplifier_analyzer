@@ -8,7 +8,9 @@ MeasurementResult_t last_result;
 
 static float get_vin_mv(uint32_t *adc_buf, int32_t idx, uint8_t range) {
     uint16_t raw_code = (uint16_t)(adc_buf[idx] >> 16);
-    return calibration_adc_code_to_voltage(raw_code, 1, range);
+    (void)range;
+    /* Vin/B0 is wired directly and is not switched by the range relays. */
+    return calibration_adc_code_to_voltage(raw_code, 1, 0U);
 }
 
 static float get_vout_mv(uint32_t *adc_buf, int32_t idx, uint8_t range) {

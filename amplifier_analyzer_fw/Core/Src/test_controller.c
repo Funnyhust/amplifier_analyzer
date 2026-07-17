@@ -30,12 +30,15 @@ static uint16_t last_adc_word_b = 0U;
 // Dual ADC buffers and DAC LUT buffers
 #define MAX_ADC_BUF 512
 #define MAX_DAC_LUT 256
+/* Register-polling DAC updates run in TIM3 IRQ; leave CPU time for ADC/USB. */
+#define DAC_MAX_ISR_RATE_HZ 50000U
 uint32_t adc_dual_buffer[MAX_ADC_BUF]; // Interleaved ADC1/ADC2 samples
 uint16_t dac_lut[MAX_DAC_LUT];
 uint32_t dac_lut_size = 256;
 static volatile uint8_t dac_stream_running = 0U;
 static volatile uint16_t dac_stream_index = 0U;
 static volatile uint8_t dac_stream_start_pending = 0U;
+static float last_capture_fs_hz = 0.0f;
 
 #if (ACTIVE_MODE == MODE_TEST_USB)
 static float usb_sim_phase = 0.0f;
@@ -157,8 +160,13 @@ void test_controller_init(void) {
 
 static void test_controller_generate_lut(void) {
     uint32_t N = current_config.fs / current_config.freq;
-    if (N < 10) N = 10;
+    uint32_t max_points_by_cpu = DAC_MAX_ISR_RATE_HZ / current_config.freq;
+
+    /* Four points is the minimum that can still represent a sine waveform. */
+    if (max_points_by_cpu < 4U) max_points_by_cpu = 4U;
+    if (N < 4U) N = 4U;
     if (N > MAX_DAC_LUT) N = MAX_DAC_LUT;
+    if (N > max_points_by_cpu) N = max_points_by_cpu;
     dac_lut_size = N;
     
     for (uint32_t i = 0; i < N; i++) {
@@ -205,22 +213,40 @@ static void test_controller_dac_stream_stop(void) {
 static uint8_t test_controller_dac_stream_start(void) {
 #if defined(STM32F103xB) && (ACTIVE_MODE == MODE_NORMAL)
     uint32_t timer_clock = HAL_RCC_GetPCLK1Freq();
+    uint32_t dac_update_hz;
     uint32_t prescaler;
     uint32_t counter_clock;
     uint32_t period_ticks;
 
-    if (current_config.fs == 0U || dac_lut_size == 0U) return 0U;
+    if (current_config.fs == 0U || current_config.freq == 0U ||
+        dac_lut_size == 0U) return 0U;
+
+    /*
+     * The LUT may be capped at MAX_DAC_LUT.  Clocking it at ADC Fs would then
+     * change the generated signal frequency (for example 200 kHz / 256 =
+     * 781.25 Hz instead of the configured 200 Hz) and needlessly starve the
+     * CPU with DAC interrupts.  One complete LUT must always equal one signal
+     * period, independently of the requested ADC sample rate.
+     */
+    if (current_config.freq > UINT32_MAX / dac_lut_size) return 0U;
+    dac_update_hz = current_config.freq * dac_lut_size;
+    if (mcp4822_write_raw(
+            MCP4822_CHANNEL_A,
+            current_config.dac_gain == 2U ? MCP4822_GAIN_X2
+                                          : MCP4822_GAIN_X1,
+            dac_lut[0]) != MCP4822_OK) {
+        return 0U;
+    }
 
     /* APB timer clocks are doubled whenever the APB prescaler is not one. */
     if ((RCC->CFGR & RCC_CFGR_PPRE1) != RCC_CFGR_PPRE1_DIV1) {
         timer_clock *= 2U;
     }
 
-    prescaler = (timer_clock / current_config.fs - 1U) / 65536U;
+    prescaler = (timer_clock / dac_update_hz - 1U) / 65536U;
     if (prescaler > 65535U) return 0U;
     counter_clock = timer_clock / (prescaler + 1U);
-    period_ticks = (counter_clock + current_config.fs / 2U) /
-                   current_config.fs;
+    period_ticks = (counter_clock + dac_update_hz / 2U) / dac_update_hz;
     if (period_ticks == 0U || period_ticks > 65536U) return 0U;
 
     __HAL_RCC_TIM3_CLK_ENABLE();
@@ -231,7 +257,7 @@ static uint8_t test_controller_dac_stream_start(void) {
     TIM3->EGR = TIM_EGR_UG;
     TIM3->SR = 0U;
 
-    dac_stream_index = 0U;
+    dac_stream_index = (dac_lut_size > 1U) ? 1U : 0U;
     dac_stream_running = 1U;
     /* USB remains higher priority so CDC cannot be starved by the DAC tick. */
     HAL_NVIC_SetPriority(TIM3_IRQn, 2U, 0U);
@@ -273,7 +299,17 @@ uint8_t test_controller_is_dac_stream_running(void) {
     return dac_stream_running;
 }
 
+uint32_t test_controller_get_dac_update_hz(void) {
+    if (current_config.freq == 0U || dac_lut_size == 0U ||
+        current_config.freq > UINT32_MAX / dac_lut_size) {
+        return 0U;
+    }
+    return current_config.freq * dac_lut_size;
+}
+
 uint8_t test_controller_configure(const TestConfig_t *config) {
+    uint8_t resume_dac_stream = dac_stream_running;
+
     if (config == NULL || config->samples == 0U ||
         config->samples > MAX_ADC_BUF || config->freq == 0U ||
         config->fs < config->freq ||
@@ -294,18 +330,21 @@ uint8_t test_controller_configure(const TestConfig_t *config) {
         return 0U;
     }
 
-    /* CONFIG is only accepted as a new stopped setup. */
+    /* Rebuild safely, but preserve live-output state when CONFIG is reapplied. */
     test_controller_dac_stream_stop();
     memcpy(&current_config, config, sizeof(TestConfig_t));
     test_controller_generate_lut();
+    if (resume_dac_stream != 0U && !test_controller_dac_stream_start()) {
+        last_test_error = TEST_ERROR_DAC_SPI;
+        return 0U;
+    }
     last_test_error = TEST_ERROR_NONE;
     return 1U;
 }
 
 uint8_t test_controller_start(void) {
     if (current_state == STATE_RUNNING) {
-        /* A repeated START means a fresh live capture, not stale-buffer ACK. */
-        test_controller_dac_stream_stop();
+        /* A repeated START captures a fresh block without resetting DAC phase. */
         current_state = STATE_IDLE;
     }
 
@@ -323,6 +362,11 @@ uint8_t test_controller_start(void) {
 
 #if defined(STM32F103xB) && (ACTIVE_MODE == MODE_NORMAL)
     test_controller_generate_lut();
+    if (dac_stream_running == 0U && !test_controller_dac_stream_start()) {
+        last_test_error = TEST_ERROR_DAC_SPI;
+        current_state = STATE_ERROR;
+        return 0U;
+    }
 #endif
 
 #if (ACTIVE_MODE == MODE_TEST_USB)
@@ -343,21 +387,9 @@ uint8_t test_controller_start(void) {
 #elif defined(STM32F103xB)
     // STM32F103C8T6 Physical SPI path using external MCP4822 and ADS7861
     ads7861_sample_pair_t adc_sample;
+    uint32_t capture_started = DWT->CYCCNT;
     
     for (uint32_t i = 0; i < current_config.samples; i++) {
-        /* Preserve the proven blocking capture sequence for bring-up. */
-        if (mcp4822_write_raw(
-                MCP4822_CHANNEL_A,
-                current_config.dac_gain == 2U ? MCP4822_GAIN_X2
-                                              : MCP4822_GAIN_X1,
-                dac_lut[i % dac_lut_size]) != MCP4822_OK) {
-            last_test_error = TEST_ERROR_DAC_SPI;
-            current_state = STATE_ERROR;
-            return 0U;
-        }
-
-        for (volatile uint32_t d = 0U; d < 40U; d++) {}
-
         // Capture simultaneously on ADS7861
         ads7861_status_t adc_status = ADS7861_OK;
         uint8_t frame_attempt;
@@ -396,9 +428,18 @@ uint8_t test_controller_start(void) {
          * Convert the ADS7861 signed two's-complement samples at this boundary;
          * the standalone driver always exposes the original signed values.
          */
-        uint16_t ch1_code = (uint16_t)((int32_t)adc_sample.ch_a_raw + 2048);
-        uint16_t ch2_code = (uint16_t)((int32_t)adc_sample.ch_b_raw + 2048);
-        adc_dual_buffer[i] = ((uint32_t)ch1_code << 16) | ch2_code;
+        /* Board wiring: ADS B0 is Vin; ADS A0 is Vout. */
+        uint16_t vin_code = (uint16_t)((int32_t)adc_sample.ch_b_raw + 2048);
+        uint16_t vout_code = (uint16_t)((int32_t)adc_sample.ch_a_raw + 2048);
+        adc_dual_buffer[i] = ((uint32_t)vin_code << 16) | vout_code;
+    }
+    {
+        uint32_t elapsed_cycles = DWT->CYCCNT - capture_started;
+        if (elapsed_cycles != 0U) {
+            last_capture_fs_hz =
+                ((float)current_config.samples * (float)SystemCoreClock) /
+                (float)elapsed_cycles;
+        }
     }
 #else
 #error "No capture implementation for this MCU/build mode"
@@ -407,8 +448,11 @@ uint8_t test_controller_start(void) {
 #if (ACTIVE_MODE == MODE_TEST_USB)
         test_controller_update_usb_sim_result();
 #else
+        uint32_t processing_fs = (last_capture_fs_hz >= 1.0f)
+                               ? (uint32_t)(last_capture_fs_hz + 0.5f)
+                               : current_config.fs;
         measurement_engine_process(adc_dual_buffer, current_config.samples,
-                                   current_config.fs, current_config.freq);
+                                   processing_fs, current_config.freq);
 #endif
 
         if (!range_control_update_auto_from_samples(adc_dual_buffer,
@@ -418,18 +462,6 @@ uint8_t test_controller_start(void) {
     }
     if (current_state == STATE_ERROR) return 0U;
 
-#if defined(STM32F103xB) && (ACTIVE_MODE == MODE_NORMAL)
-    /*
-     * Start the independent continuous generator only after blocking ADS
-     * bring-up capture is complete. This avoids ISR/bit-bang interaction.
-     */
-    /*
-     * Defer the high-rate timer until command_parser has transmitted the START
-     * acknowledgement.  test_controller_service() is called on the next main
-     * loop iteration, after protocol_send_raw() has completed the IN transfer.
-     */
-    dac_stream_start_pending = 1U;
-#endif
     return 1U;
 }
 
@@ -492,9 +524,9 @@ void test_controller_get_result(char *out_buf, uint16_t max_len) {
     float phase_deg = isfinite(last_result.phase_deg) ? last_result.phase_deg : 0.0f;
     float freq_est = isfinite(last_result.freq_est) ? last_result.freq_est : 0.0f;
 
-    snprintf(out_buf, max_len, "RESULT:{\"vin_rms\":%.2f,\"vin_vpp\":%.2f,\"vout_rms\":%.2f,\"vout_vpp\":%.2f,\"gain_db\":%.2f,\"phase_deg\":%.2f,\"freq_est\":%.1f,\"range\":%d,\"range_name\":\"%s\",\"range_mode\":\"%s\"}\n",
+    snprintf(out_buf, max_len, "RESULT:{\"vin_rms\":%.2f,\"vin_vpp\":%.2f,\"vout_rms\":%.2f,\"vout_vpp\":%.2f,\"gain_db\":%.2f,\"phase_deg\":%.2f,\"freq_est\":%.1f,\"fs_actual\":%.1f,\"range\":%d,\"range_name\":\"%s\",\"range_mode\":\"%s\"}\n",
              vin_rms, vin_vpp, vout_rms, vout_vpp,
-             gain_db, phase_deg, freq_est,
+             gain_db, phase_deg, freq_est, last_capture_fs_hz,
              range_control_get_current_range(),
              range_control_get_range_name(), range_control_get_mode_name());
 }

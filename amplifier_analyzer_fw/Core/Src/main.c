@@ -416,7 +416,7 @@ static void MX_SPI2_Init(void)
   /* ADS7861 serial data is valid on the falling clock edge. */
   hspi2.Init.CLKPhase = SPI_PHASE_2EDGE;
   hspi2.Init.NSS = SPI_NSS_SOFT;
-  /* APB1=36 MHz: /32 = 1.125 MHz, intentionally conservative for bring-up. */
+  /* APB1=36 MHz: /32 = 1.125 MHz, validated with strict ADC frames. */
   hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
   hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi2.Init.TIMode = SPI_TIMODE_DISABLE;

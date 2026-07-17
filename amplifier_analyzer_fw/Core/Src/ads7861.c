@@ -10,6 +10,11 @@
 #define ADS7861_SIGN_BIT                 0x0800U
 #define ADS7861_TRAILING_MASK            0x0003U
 
+/* The first clock after RD is a pipeline clock; capture the following 16 bits. */
+static volatile uint8_t ads7861_sample_after_falling = 3U;
+static volatile uint8_t ads7861_rd_release_bit = 0U;
+static volatile uint16_t ads7861_last_busy_mask = 0U;
+
 static uint8_t ads7861_device_valid(const ads7861_t *dev)
 {
     return dev != NULL && dev->hspi != NULL &&
@@ -94,6 +99,35 @@ static uint32_t ads7861_spi_timeout_ms(const ads7861_t *dev)
     if (timeout_us == 0U) timeout_us = ADS7861_DEFAULT_TIMEOUT_US;
     return (timeout_us + 999U) / 1000U;
 }
+
+static HAL_StatusTypeDef ads7861_spi_receive_bytes(
+    SPI_HandleTypeDef *hspi, uint8_t rx[2])
+{
+    uint32_t start_tick = HAL_GetTick();
+    volatile uint32_t clear;
+
+    while (__HAL_SPI_GET_FLAG(hspi, SPI_FLAG_RXNE) != RESET) {
+        clear = *(__IO uint8_t *)&hspi->Instance->DR;
+    }
+    clear = hspi->Instance->SR;
+    (void)clear;
+    __HAL_SPI_ENABLE(hspi);
+
+    for (uint8_t index = 0U; index < 2U; index++) {
+        while (__HAL_SPI_GET_FLAG(hspi, SPI_FLAG_TXE) == RESET) {
+            if ((HAL_GetTick() - start_tick) > 5U) return HAL_TIMEOUT;
+        }
+        *(__IO uint8_t *)&hspi->Instance->DR = 0U;
+        while (__HAL_SPI_GET_FLAG(hspi, SPI_FLAG_RXNE) == RESET) {
+            if ((HAL_GetTick() - start_tick) > 5U) return HAL_TIMEOUT;
+        }
+        rx[index] = *(__IO uint8_t *)&hspi->Instance->DR;
+    }
+    while (__HAL_SPI_GET_FLAG(hspi, SPI_FLAG_BSY) != RESET) {
+        if ((HAL_GetTick() - start_tick) > 5U) return HAL_TIMEOUT;
+    }
+    return HAL_OK;
+}
 #endif
 
 static ads7861_status_t ads7861_receive_word(
@@ -101,28 +135,50 @@ static ads7861_status_t ads7861_receive_word(
 {
 #if ADS7861_USE_BITBANG_BRINGUP
     uint16_t value = 0U;
+    uint16_t busy_mask = 0U;
 
     if (!ads7861_device_valid(dev) || word == NULL) {
         return ADS7861_ERR_NULL;
     }
 
-    /* Capture after the rising edge, where this board shows stable live data. */
-    for (uint8_t bit = 0U; bit < 16U; bit++) {
+    /* Runtime-selectable edge permits board-level timing diagnosis over CDC. */
+    uint8_t clock_count = (ads7861_sample_after_falling == 3U) ? 17U : 16U;
+    for (uint8_t bit = 0U; bit < clock_count; bit++) {
+        if (ads7861_sample_after_falling == 2U) {
+            value = (uint16_t)(value << 1);
+            if (HAL_GPIO_ReadPin(dev->data_port, dev->data_pin) == GPIO_PIN_SET) {
+                value |= 1U;
+            }
+        }
         HAL_GPIO_WritePin(dev->clock_port, dev->clock_pin, GPIO_PIN_SET);
         ads7861_delay_us(ADS7861_BITBANG_HALF_PERIOD_US);
-        value = (uint16_t)(value << 1);
-        if (HAL_GPIO_ReadPin(dev->data_port, dev->data_pin) == GPIO_PIN_SET) {
-            value |= 1U;
+        busy_mask = (uint16_t)(busy_mask << 1);
+        if (HAL_GPIO_ReadPin(dev->busy_port, dev->busy_pin) == GPIO_PIN_SET) {
+            busy_mask |= 1U;
+        }
+        if (ads7861_sample_after_falling == 0U ||
+            (ads7861_sample_after_falling == 3U && bit > 0U)) {
+            value = (uint16_t)(value << 1);
+            if (HAL_GPIO_ReadPin(dev->data_port, dev->data_pin) == GPIO_PIN_SET) {
+                value |= 1U;
+            }
         }
         HAL_GPIO_WritePin(dev->clock_port, dev->clock_pin, GPIO_PIN_RESET);
         ads7861_delay_us(ADS7861_BITBANG_HALF_PERIOD_US);
-        if (bit == 0U) {
+        if (ads7861_sample_after_falling == 1U) {
+            value = (uint16_t)(value << 1);
+            if (HAL_GPIO_ReadPin(dev->data_port, dev->data_pin) == GPIO_PIN_SET) {
+                value |= 1U;
+            }
+        }
+        if (bit == ads7861_rd_release_bit) {
             /* RD must remain HIGH through the first falling CLOCK edge. */
             HAL_GPIO_WritePin(dev->convst_port, dev->convst_pin,
                               GPIO_PIN_RESET);
             ads7861_delay_us(ADS7861_BITBANG_HALF_PERIOD_US);
         }
     }
+    ads7861_last_busy_mask = busy_mask;
     *word = value;
     return ADS7861_OK;
 #else
@@ -140,13 +196,34 @@ static ads7861_status_t ads7861_receive_word(
 #endif
     {
         uint8_t rx8[2] = {0U, 0U};
-        hal_status = HAL_SPI_Receive(dev->hspi, rx8, 2U,
-                                    ads7861_spi_timeout_ms(dev));
+        hal_status = ads7861_spi_receive_bytes(dev->hspi, rx8);
         *word = ((uint16_t)rx8[0] << 8) | (uint16_t)rx8[1];
     }
 
+    /*
+     * SPI captures one pipeline zero before the 15 significant frame bits.
+     * The omitted final bit is the specified trailing zero, so this shift
+     * reconstructs the complete [status|data|00] word without extra clocks.
+     */
+    if (hal_status == HAL_OK) {
+        *word = (uint16_t)(*word << 1);
+    }
+
+    /* RD is tied to CONVST; keep it HIGH through the SPI clock train. */
+    HAL_GPIO_WritePin(dev->convst_port, dev->convst_pin, GPIO_PIN_RESET);
+
     return (hal_status == HAL_OK) ? ADS7861_OK : ADS7861_ERR_SPI;
 #endif
+}
+
+void ads7861_set_bitbang_sample_after_falling(uint8_t enabled)
+{
+    ads7861_sample_after_falling = (enabled <= 3U) ? enabled : 0U;
+}
+
+void ads7861_set_bitbang_rd_release_bit(uint8_t bit_index)
+{
+    ads7861_rd_release_bit = (bit_index < 16U) ? bit_index : 0U;
 }
 
 ads7861_status_t ads7861_init(
@@ -161,6 +238,9 @@ ads7861_status_t ads7861_init(
     GPIO_TypeDef *clock_port, uint16_t clock_pin,
     GPIO_TypeDef *data_port, uint16_t data_pin)
 {
+    ads7861_status_t status;
+    ads7861_sample_pair_t discard;
+
     if (dev == NULL || hspi == NULL || cs_port == NULL ||
         convst_port == NULL || a0_port == NULL || m0_port == NULL ||
         m1_port == NULL || clock_port == NULL || data_port == NULL) {
@@ -219,7 +299,12 @@ ads7861_status_t ads7861_init(
      * Only SERIAL DATA A is wired to STM32 MISO; SDB is unused. Therefore the
      * safe default is Mode II: M0=0, M1=1, A0=0 (simultaneous A0/B0).
      */
-    return ads7861_set_mode(dev, ADS7861_MODE_TWO_CH_SERIAL_A_ONLY);
+    status = ads7861_set_mode(dev, ADS7861_MODE_TWO_CH_SERIAL_A_ONLY);
+    if (status != ADS7861_OK) return status;
+
+    /* Prime the Mode-II output pipeline after M1 transitions HIGH. */
+    status = ads7861_read_pair(dev, ADS7861_PAIR_0, &discard);
+    return status;
 }
 
 ads7861_status_t ads7861_set_mode(ads7861_t *dev, ads7861_mode_t mode)
@@ -301,7 +386,6 @@ ads7861_status_t ads7861_start_conversion(ads7861_t *dev)
     __NOP();
     __NOP();
     __NOP();
-    HAL_GPIO_WritePin(dev->convst_port, dev->convst_pin, GPIO_PIN_RESET);
 #endif
     return ADS7861_OK;
 }
@@ -329,8 +413,9 @@ ads7861_status_t ads7861_read_words_serial_a(
     status = ads7861_receive_word(dev, word_a);
     if (status == ADS7861_OK) {
         /*
-         * In M1=1 the second RD/CONVST pulse is ignored as a new conversion,
-         * but it synchronizes the B word onto SERIAL DATA A (datasheet Mode II).
+         * With RD tied to CONVST in Mode II, the pulse at the 16-clock
+         * boundary is required to expose the B result on SERIAL DATA A. M1=1
+         * makes this second pulse a read command only; no new conversion starts.
          */
         status = ads7861_start_conversion(dev);
     }
@@ -339,6 +424,115 @@ ads7861_status_t ads7861_read_words_serial_a(
     }
     HAL_GPIO_WritePin(dev->cs_port, dev->cs_pin, GPIO_PIN_SET);
     return status;
+}
+
+ads7861_status_t ads7861_debug_read_triplet(
+    ads7861_t *dev, ads7861_pair_t pair, uint16_t words[3])
+{
+    ads7861_status_t status;
+
+    if (!ads7861_device_valid(dev) || words == NULL) {
+        return ADS7861_ERR_NULL;
+    }
+    memset(words, 0, 3U * sizeof(words[0]));
+    status = ads7861_select_pair(dev, pair);
+    if (status != ADS7861_OK) return status;
+
+    HAL_GPIO_WritePin(dev->cs_port, dev->cs_pin, GPIO_PIN_RESET);
+    status = ads7861_start_conversion(dev);
+    if (status != ADS7861_OK) {
+        HAL_GPIO_WritePin(dev->cs_port, dev->cs_pin, GPIO_PIN_SET);
+        return status;
+    }
+    for (uint8_t index = 0U; index < 3U && status == ADS7861_OK; index++) {
+        status = ads7861_receive_word(dev, &words[index]);
+        if (index < 2U && status == ADS7861_OK) {
+            status = ads7861_start_conversion(dev);
+        }
+    }
+    HAL_GPIO_WritePin(dev->cs_port, dev->cs_pin, GPIO_PIN_SET);
+    return status;
+}
+
+ads7861_status_t ads7861_debug_busy_trace(
+    ads7861_t *dev, ads7861_pair_t pair, uint16_t *word,
+    uint16_t *busy_mask, uint8_t *busy_before,
+    uint8_t *busy_after_start, uint8_t *busy_after_word)
+{
+    ads7861_status_t status;
+
+    if (!ads7861_device_valid(dev) || word == NULL || busy_mask == NULL ||
+        busy_before == NULL || busy_after_start == NULL ||
+        busy_after_word == NULL) {
+        return ADS7861_ERR_NULL;
+    }
+    status = ads7861_select_pair(dev, pair);
+    if (status != ADS7861_OK) return status;
+
+    *busy_before = (uint8_t)HAL_GPIO_ReadPin(dev->busy_port, dev->busy_pin);
+    HAL_GPIO_WritePin(dev->cs_port, dev->cs_pin, GPIO_PIN_RESET);
+    status = ads7861_start_conversion(dev);
+    *busy_after_start = (uint8_t)HAL_GPIO_ReadPin(
+        dev->busy_port, dev->busy_pin);
+    if (status == ADS7861_OK) {
+        status = ads7861_receive_word(dev, word);
+    }
+    *busy_mask = ads7861_last_busy_mask;
+    *busy_after_word = (uint8_t)HAL_GPIO_ReadPin(
+        dev->busy_port, dev->busy_pin);
+    HAL_GPIO_WritePin(dev->cs_port, dev->cs_pin, GPIO_PIN_SET);
+    return status;
+}
+
+ads7861_status_t ads7861_debug_serial_trace(
+    ads7861_t *dev, ads7861_pair_t pair,
+    uint32_t *data_trace, uint32_t *busy_trace, uint8_t pulse_start)
+{
+    ads7861_status_t status;
+    uint32_t data = 0U;
+    uint32_t busy = 0U;
+
+    if (!ads7861_device_valid(dev) || data_trace == NULL ||
+        busy_trace == NULL) {
+        return ADS7861_ERR_NULL;
+    }
+    status = ads7861_select_pair(dev, pair);
+    if (status != ADS7861_OK) return status;
+
+    HAL_GPIO_WritePin(dev->cs_port, dev->cs_pin, GPIO_PIN_RESET);
+    if (pulse_start != 0U) {
+        status = ads7861_start_conversion(dev);
+        if (status != ADS7861_OK) {
+            HAL_GPIO_WritePin(dev->cs_port, dev->cs_pin, GPIO_PIN_SET);
+            return status;
+        }
+    } else {
+        HAL_GPIO_WritePin(dev->convst_port, dev->convst_pin, GPIO_PIN_RESET);
+    }
+
+    data = (HAL_GPIO_ReadPin(dev->data_port, dev->data_pin) == GPIO_PIN_SET)
+               ? 1U : 0U;
+    for (uint8_t bit = 0U; bit < 20U; bit++) {
+        HAL_GPIO_WritePin(dev->clock_port, dev->clock_pin, GPIO_PIN_SET);
+        ads7861_delay_us(ADS7861_BITBANG_HALF_PERIOD_US);
+        data = (data << 1) |
+            ((HAL_GPIO_ReadPin(dev->data_port, dev->data_pin) == GPIO_PIN_SET)
+                 ? 1U : 0U);
+        busy = (busy << 1) |
+            ((HAL_GPIO_ReadPin(dev->busy_port, dev->busy_pin) == GPIO_PIN_SET)
+                 ? 1U : 0U);
+        HAL_GPIO_WritePin(dev->clock_port, dev->clock_pin, GPIO_PIN_RESET);
+        ads7861_delay_us(ADS7861_BITBANG_HALF_PERIOD_US);
+        if (bit == ads7861_rd_release_bit) {
+            HAL_GPIO_WritePin(dev->convst_port, dev->convst_pin,
+                              GPIO_PIN_RESET);
+            ads7861_delay_us(ADS7861_BITBANG_HALF_PERIOD_US);
+        }
+    }
+    HAL_GPIO_WritePin(dev->cs_port, dev->cs_pin, GPIO_PIN_SET);
+    *data_trace = data;
+    *busy_trace = busy;
+    return ADS7861_OK;
 }
 
 int16_t ads7861_parse_word(

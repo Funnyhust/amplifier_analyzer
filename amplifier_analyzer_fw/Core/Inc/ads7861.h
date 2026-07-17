@@ -111,6 +111,15 @@ ads7861_status_t ads7861_start_conversion(ads7861_t *dev);
 ads7861_status_t ads7861_wait_busy_done(ads7861_t *dev);
 ads7861_status_t ads7861_read_words_serial_a(
     ads7861_t *dev, uint16_t *word_a, uint16_t *word_b);
+ads7861_status_t ads7861_debug_read_triplet(
+    ads7861_t *dev, ads7861_pair_t pair, uint16_t words[3]);
+ads7861_status_t ads7861_debug_busy_trace(
+    ads7861_t *dev, ads7861_pair_t pair, uint16_t *word,
+    uint16_t *busy_mask, uint8_t *busy_before,
+    uint8_t *busy_after_start, uint8_t *busy_after_word);
+ads7861_status_t ads7861_debug_serial_trace(
+    ads7861_t *dev, ads7861_pair_t pair,
+    uint32_t *data_trace, uint32_t *busy_trace, uint8_t pulse_start);
 ads7861_status_t ads7861_read_pair(
     ads7861_t *dev, ads7861_pair_t pair, ads7861_sample_pair_t *sample);
 
@@ -127,6 +136,8 @@ ads7861_status_t ads7861_read_voltage_pair(
     ads7861_t *dev, ads7861_pair_t pair, float *voltage_a, float *voltage_b);
 
 ads7861_status_t ads7861_self_test_parse(void);
+void ads7861_set_bitbang_sample_after_falling(uint8_t enabled);
+void ads7861_set_bitbang_rd_release_bit(uint8_t bit_index);
 
 #ifdef __cplusplus
 }

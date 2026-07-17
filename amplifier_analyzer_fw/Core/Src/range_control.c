@@ -132,9 +132,9 @@ uint8_t range_control_update_auto_from_samples(const uint32_t *adc_buf,
         return 0U;
     }
 
-    /* Channel A (upper 16 bits) is connected to the ranged AMP_B_OUT path. */
+    /* Vout/ADS A0 is the low 16-bit channel and uses the range relays. */
     for (uint32_t i = 0; i < len; i++) {
-        uint16_t code = (uint16_t)((adc_buf[i] >> 16) & 0x0FFFU);
+        uint16_t code = (uint16_t)(adc_buf[i] & 0x0FFFU);
         if (code < min_code) min_code = code;
         if (code > max_code) max_code = code;
         if (code <= ADC_RAIL_LOW_CODE || code >= ADC_RAIL_HIGH_CODE) rail_hits++;
