@@ -583,3 +583,10 @@ Chưa đạt 200 kSPS continuous. Giới hạn hiện tại không phải do ri�
 - Quét sine 20 kHz ở 80/100/120/140/160/180/200 kupdate/s đồng thời ADC/USB 140 kSPS, mỗi mức 3 s: CRC/sequence/junk 0; ADC `OVERRUN=INVALID=OVERWRITE=0`; DAC `TX_ERR=0`; raw Vin luôn có tín hiệu 20 kHz.
 - Soak 30.000 s tại DAC 200 kupdate/s + ADC 140 kSPS: host `4199936` mẫu (`139997.9 SPS`), 8203 frame; CRC/sequence/junk 0; ADC `PRODUCED=4200959, OVERRUN=0, INVALID=0, OVERWRITE=0`; DAC `TX_ERR=0`, raw Vin `1100..1593`.
 - Kiểm tra lại đúng cấu hình app `CONFIG.FS=140000`: status DAC vẫn `UPDATE_HZ=200000`; stream ADC 140 kSPS 10 s nhận `1399296` mẫu, mọi counter lỗi bằng 0.
+
+### 15.15 App tự dừng live stream ở 140 kSPS
+
+- Firmware không tự dừng. App đổi nút về `Bắt đầu đo` trong `handle_capture_error()` sau khi worker báo lỗi truyền thông/sample-loss.
+- Root cause: `LiveStreamWorker` phát `capture_ready` cho từng frame 512 mẫu. Ở 140 kSPS là khoảng 273 callback GUI/s; mỗi callback chạy FFT/metrics/history và tranh Python GIL với thread đọc COM, khiến reader có thể không drain serial kịp.
+- Giữ nguyên toàn bộ sample và CRC/sequence validation nhưng gom 16 frame thành `UI_BLOCK_SAMPLES=8192`, giảm GUI analysis xuống khoảng 17 callback/s. Nội dung lỗi stream cũng được đưa lên dòng trạng thái kết nối thay vì chỉ nằm ở bảng DUT phía dưới.
+- `py_compile` đạt; 4/4 unit test đạt. Full GUI smoke offscreen với cấu hình 200 Hz, 1 Vpeak, ADC 140 kSPS chạy 10 s: timer active, worker running, error rỗng, nút vẫn `DỪNG phép đo`, history đạt 9.77 s / khoảng 1.36 triệu mẫu. Start/stop cleanup hoàn tất không cần rút USB.

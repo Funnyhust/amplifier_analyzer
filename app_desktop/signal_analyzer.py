@@ -479,10 +479,13 @@ class LiveStreamWorker(QThread):
     capture_ready = pyqtSignal(object)
     capture_error = pyqtSignal(str)
 
-    # Proven end-to-end for 30 s while the DAC updates at 50 kHz:
-    # no CRC/sequence loss and no firmware overrun/invalid/overwrite.
+    # Proven end-to-end with ADC at 140 kSPS and DAC DMA up to 200 kupdate/s.
     STREAM_FS = 140000
-    UI_BLOCK_SAMPLES = 512
+    # A 512-sample USB frame arrives about 273 times/s at 140 kSPS. Emitting
+    # every frame makes GUI FFT/metrics callbacks contend with the serial
+    # reader for the Python GIL. Batch 16 losslessly checked frames so the GUI
+    # updates at about 17 Hz while the worker keeps draining COM continuously.
+    UI_BLOCK_SAMPLES = 8192
 
     def __init__(self, serial_conn):
         super().__init__()
@@ -1757,6 +1760,10 @@ class SignalAnalyzerApp(QMainWindow):
         self.last_data_complete = False
         self.last_communication_error = message
         self.pending_device_stop = True
+        self.lbl_conn_status.setText(f"Stream error: {message}")
+        self.lbl_conn_status.setStyleSheet(
+            "color: #FF5252; font-weight: bold;"
+        )
         self.btn_ana_live.setText(self.tr("Start Test"))
         self.btn_osc_live.setText(self.tr("Start Passive Oscillo (RX Only)"))
         for index in range(self.ctrl_tabs.count()):
