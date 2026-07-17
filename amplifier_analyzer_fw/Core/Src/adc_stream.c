@@ -168,6 +168,7 @@ uint8_t adc_stream_start(uint32_t sample_rate_hz)
     counter_clock = timer_clock / (prescaler + 1U);
     period_ticks = (counter_clock + sample_rate_hz / 2U) / sample_rate_hz;
     if (period_ticks == 0U || period_ticks > 65536U) return 0U;
+    stream_stats.actual_fs = counter_clock / period_ticks;
 
     __HAL_RCC_TIM2_CLK_ENABLE();
     TIM2->CR1 = 0U;
@@ -401,7 +402,7 @@ __attribute__((optimize("O3"))) void adc_stream_usb_service(void)
     }
     stream_data_ready =
         ((ring_write_count - ring_read_count) >= ADC_STREAM_USB_CHUNK) ? 1U : 0U;
-    fs = stream_stats.requested_fs;
+    fs = stream_stats.actual_fs;
     if (count == 0U) return;
     build_started = DWT->CYCCNT;
 

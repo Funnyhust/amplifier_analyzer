@@ -10,6 +10,7 @@ from signal_analysis import (
     calculate_sampling_quality,
     convert_measurement_channels,
     downsample_extrema_indices,
+    downsample_uniform_indices,
     evaluate_pass_fail,
     raw_adc_to_volts,
 )
@@ -73,6 +74,10 @@ class SamplingQualityTests(unittest.TestCase):
         # Two six-sample buckets retain each channel's extrema at their real
         # positions, sorted in time. No value is moved to a bucket boundary.
         np.testing.assert_array_equal(indices, [0, 3, 5, 6, 8, 9])
+
+    def test_uniform_display_downsampling_preserves_waveform_spacing(self):
+        indices = downsample_uniform_indices(12, 5)
+        np.testing.assert_array_equal(indices, [0, 2, 5, 8, 11])
 
     def test_dut_range_scale_never_changes_direct_vin(self):
         raw = np.array([1024, 2048, 3072])

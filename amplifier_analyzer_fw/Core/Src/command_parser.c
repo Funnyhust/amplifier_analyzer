@@ -153,8 +153,9 @@ void command_parser_execute(char *cmd_line) {
         char out[224];
         adc_stream_get_stats(&stats);
         snprintf(out, sizeof(out),
-                 "DATA:RUN=%u,FS=%lu,PRODUCED=%lu,OVERRUN=%lu,INVALID=%lu,OVERWRITE=%lu,BUILD_CYC=%lu,SEND_CYC=%lu\n",
+                 "DATA:RUN=%u,FS=%lu,ACTUAL_FS=%lu,PRODUCED=%lu,OVERRUN=%lu,INVALID=%lu,OVERWRITE=%lu,BUILD_CYC=%lu,SEND_CYC=%lu\n",
                  stats.running, (unsigned long)stats.requested_fs,
+                 (unsigned long)stats.actual_fs,
                  (unsigned long)stats.produced,
                  (unsigned long)stats.timer_overrun,
                  (unsigned long)stats.invalid_frame,

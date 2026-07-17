@@ -211,6 +211,17 @@ def downsample_extrema_indices(channels, max_points: int) -> np.ndarray:
     return np.unique(np.concatenate(selected)).astype(np.int64, copy=False)
 
 
+def downsample_uniform_indices(count: int, max_points: int) -> np.ndarray:
+    """Return evenly spaced original-sample indices for waveform rendering."""
+    count = int(count)
+    max_points = int(max_points)
+    if count <= 0 or max_points <= 0:
+        return np.array([], dtype=np.int64)
+    if count <= max_points:
+        return np.arange(count, dtype=np.int64)
+    return np.linspace(0, count - 1, max_points, dtype=np.int64)
+
+
 def _positive_zero_crossing_frequency(samples: np.ndarray, fs: float) -> float:
     centered = samples - np.mean(samples)
     indices = np.flatnonzero((centered[:-1] <= 0.0) & (centered[1:] > 0.0))

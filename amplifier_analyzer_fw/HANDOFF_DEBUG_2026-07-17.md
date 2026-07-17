@@ -641,3 +641,10 @@ Chưa đạt 200 kSPS continuous. Giới hạn hiện tại không phải do ri�
 - Với DUT vào 1--3V và ra 3--9V, CH2 không thể trả absolute 3--9V vì C22 đã chặn DC 6V; đại lượng phần cứng đo được là AC khoảng -3..+3V, Vpp khoảng 6V. Muốn absolute DC cần bypass C22/thêm đường DC hoặc offset ngoài; app không được tự bịa offset.
 - Root cause sine 200Hz thành tam giác: history giữ 20s rồi decimate toàn bộ xuống 20000 điểm trước khi zoom cửa sổ 2s, chỉ còn khoảng 5 điểm/chu kỳ trong vùng nhìn. App mới crop đúng cửa sổ đang hiển thị trước khi decimate; integration check 20s history/2s view đạt 8750 điểm, 21.875 điểm/chu kỳ 200Hz.
 - App 7/7 test đạt. Production đã build/nạp J-Link; flash calibration sau reset/save/readback là `-0.212766/-2.127660/-6.666667`.
+
+### 15.23 Xác minh raw sine và sửa phân bố điểm plot
+
+- Đính chính: C22 không làm mất dạng sine; oscilloscope thấy sine tại ADC là hoàn toàn phù hợp. Test trực tiếp cùng cấu hình 200Hz/140kSPS: raw CH1 block 4096 mẫu fit sine sai số 0.617%, raw CH2 0.615%; sequence mỗi block tăng đúng 4096, mean bước nối block CH1 0.00574V còn nhỏ hơn mean bước mẫu thường 0.00639V. ADC/SPI/USB và thứ tự block đều đúng.
+- Lỗi tam giác còn lại do extrema-decimation: điểm tuy nhiều nhưng dồn ở đỉnh/đáy, thiếu phân bố đều trên sườn sine. Hai tầng plot chuyển sang `downsample_uniform_indices()` để giữ timestamp thật và khoảng cách đều; raw DSP/FFT vẫn không decimate. Unit test tăng 8/8 và đạt.
+- Firmware thêm `actual_fs` tính từ TIM2 clock/PSC/ARR; USB frame gửi actual thay vì requested Fs, status có cả `FS` và `ACTUAL_FS`. Với request 140000, timer metadata là khoảng 140078 SPS, giảm sai lệch tích lũy của trục thời gian dài.
+- Production build đạt RAM 18336/20480 (89.5%), flash 57172/65536 (87.2%); đã nạp J-Link thành công.

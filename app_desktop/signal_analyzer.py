@@ -28,7 +28,7 @@ from signal_analysis import (
     analyze_dut,
     calculate_sampling_quality,
     convert_measurement_channels,
-    downsample_extrema_indices,
+    downsample_uniform_indices,
     evaluate_pass_fail,
 )
 
@@ -1959,8 +1959,8 @@ class SignalAnalyzerApp(QMainWindow):
                 plot_ch1 = plot_ch1[visible]
                 plot_ch2 = plot_ch2[visible]
             if plot_t.size > PLOT_MAX_POINTS:
-                display_indices = downsample_extrema_indices(
-                    (plot_ch1, plot_ch2), PLOT_MAX_POINTS
+                display_indices = downsample_uniform_indices(
+                    plot_t.size, PLOT_MAX_POINTS
                 )
                 plot_t = plot_t[display_indices]
                 plot_ch1 = plot_ch1[display_indices]
@@ -2001,9 +2001,7 @@ class SignalAnalyzerApp(QMainWindow):
             return
         target_points = 256
         if count > target_points:
-            indices = downsample_extrema_indices(
-                (ch1_raw, ch2_raw), target_points
-            )
+            indices = downsample_uniform_indices(count, target_points)
             ch1_raw = ch1_raw[indices]
             ch2_raw = ch2_raw[indices]
         else:
