@@ -526,3 +526,11 @@ Chưa đạt 200 kSPS continuous. Giới hạn hiện tại không phải do ri�
 - Soak ADC 95 kSPS + DAC update 50 kHz trong 30.005 s: host nhận `2849280` mẫu (`94961.5 SPS`), 5565 frame; CRC/sequence lỗi 0; firmware `PRODUCED=2850149, OVERRUN=0, INVALID=0, OVERWRITE=0`; DAC `TX_ERR=0`.
 - Vin raw `1096..1591`; `BUILD_CYC_MAX=223614`, `SEND_CYC_MAX=5182`.
 - App live stream nâng lên 95 kSPS. Đây là checkpoint +10 kSPS thứ năm.
+
+### 15.8 Mục tiêu cuối 100 kSPS với DAC 50 kHz
+
+- Test 10 s: host nhận `999424` mẫu (`99923.9 SPS`), CRC/sequence lỗi 0; firmware `PRODUCED=1000361, OVERRUN=0, INVALID=0, OVERWRITE=0`; FFT Vin peak `199.8901 Hz`, DAC `TX_ERR=0`.
+- Soak cuối 60.004 s: host nhận `5999616` mẫu (`99986.4 SPS`), 11718 frame; CRC/sequence/junk lỗi 0; firmware `PRODUCED=6000631, OVERRUN=0, INVALID=0, OVERWRITE=0`; DAC `TX_ERR=0`.
+- Vin raw trong soak `1097..1590`. Worst observed `BUILD_CYC=347865`, `SEND_CYC=5714`; block 512 tại 100 kSPS có ngân sách khoảng 368640 cycles, vì vậy đã đạt nhưng biên timing còn khoảng vài phần trăm ở worst case.
+- App live stream nâng lên 100 kSPS. Đây là mục tiêu continuous end-to-end đã chứng minh với DAC update 50 kHz, không còn là giá trị lý thuyết.
+- Smoke test `LiveStreamWorker` thật ở 100 kSPS trong 3 s: 558 UI block/285696 mẫu, worker error 0, QThread stop bình thường; firmware sau stop `OVERRUN=0, INVALID=0, OVERWRITE=0`.
