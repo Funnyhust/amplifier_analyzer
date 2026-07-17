@@ -4,6 +4,7 @@ import unittest
 import numpy as np
 
 from signal_analysis import (
+    DAC_OUTPUT_BIAS_VOLTS,
     DUT_RANGE_DEFAULT_SCALES,
     analyze_channel,
     analyze_dut,
@@ -12,6 +13,7 @@ from signal_analysis import (
     downsample_extrema_indices,
     downsample_uniform_indices,
     evaluate_pass_fail,
+    reconstruct_zero_intercept_vout,
     raw_adc_to_volts,
 )
 
@@ -105,6 +107,20 @@ class SamplingQualityTests(unittest.TestCase):
                     raw, raw, vout_range_scale=scale
                 )
                 np.testing.assert_allclose(vout, base * scale)
+
+    def test_explicit_zero_intercept_dc_reconstruction(self):
+        phase = np.linspace(0.0, 4.0 * np.pi, 1000, endpoint=False)
+        vin = 2.0 + np.sin(phase)
+        vout_ac = 3.0 * np.sin(phase)
+        reconstructed, gain, inferred_dc = reconstruct_zero_intercept_vout(
+            vin, vout_ac, vin_dc=2.0
+        )
+        self.assertAlmostEqual(gain, 3.0, places=6)
+        self.assertAlmostEqual(inferred_dc, 6.0, places=6)
+        np.testing.assert_allclose(reconstructed, 6.0 + vout_ac, atol=1e-12)
+
+    def test_dac_bias_matches_firmware_output_center(self):
+        self.assertAlmostEqual(DAC_OUTPUT_BIAS_VOLTS, 1.65, places=9)
 
 
 if __name__ == "__main__":

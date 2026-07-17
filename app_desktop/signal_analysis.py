@@ -13,6 +13,7 @@ MCP4822_SETTLING_TIME_US = 4.5
 ADC_MAX_CODE = 4095
 ADS7861_MIDSCALE_CODE = 2048.0
 ADS7861_VREF_VOLTS = 2.5
+DAC_OUTPUT_BIAS_VOLTS = 1.65
 # U4A is an inverting AC-coupled CH2 frontend with R26=10k. Relay feedback
 # resistors are 47k, 4.7k and 1.5k, so reconstruct Vin with -Rin/Rfeedback.
 DUT_RANGE_DEFAULT_SCALES = (-10.0 / 47.0, -10.0 / 4.7, -10.0 / 1.5)
@@ -171,6 +172,26 @@ def convert_measurement_channels(
         vout_raw, vout_range_scale, vout_range_offset_mv
     )
     return vin, vout
+
+
+def reconstruct_zero_intercept_vout(vin, vout_ac, vin_dc=None):
+    """Infer Vout DC under the explicit model Vout = gain * Vin."""
+    vin = np.asarray(vin, dtype=np.float64)
+    vout_ac = np.asarray(vout_ac, dtype=np.float64)
+    if vin.size != vout_ac.size or vin.size < 4:
+        raise ValueError("Vin and Vout must contain at least four samples")
+    vin_centered = vin - np.mean(vin)
+    vout_centered = vout_ac - np.mean(vout_ac)
+    vin_energy = float(np.dot(vin_centered, vin_centered))
+    vout_energy = float(np.dot(vout_centered, vout_centered))
+    if vin_energy <= 1e-12 or vout_energy <= 1e-12:
+        raise ValueError("Vin has no measurable AC component")
+    gain_magnitude = math.sqrt(vout_energy / vin_energy)
+    correlation = float(np.dot(vin_centered, vout_centered))
+    signed_gain = gain_magnitude if correlation >= 0.0 else -gain_magnitude
+    input_dc = float(np.mean(vin) if vin_dc is None else vin_dc)
+    inferred_dc = signed_gain * input_dc
+    return vout_centered + inferred_dc, signed_gain, inferred_dc
 
 
 def downsample_extrema_indices(channels, max_points: int) -> np.ndarray:

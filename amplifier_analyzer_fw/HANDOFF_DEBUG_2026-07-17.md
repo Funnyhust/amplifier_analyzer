@@ -648,3 +648,10 @@ Chưa đạt 200 kSPS continuous. Giới hạn hiện tại không phải do ri�
 - Lỗi tam giác còn lại do extrema-decimation: điểm tuy nhiều nhưng dồn ở đỉnh/đáy, thiếu phân bố đều trên sườn sine. Hai tầng plot chuyển sang `downsample_uniform_indices()` để giữ timestamp thật và khoảng cách đều; raw DSP/FFT vẫn không decimate. Unit test tăng 8/8 và đạt.
 - Firmware thêm `actual_fs` tính từ TIM2 clock/PSC/ARR; USB frame gửi actual thay vì requested Fs, status có cả `FS` và `ACTUAL_FS`. Với request 140000, timer metadata là khoảng 140078 SPS, giảm sai lệch tích lũy của trục thời gian dài.
 - Production build đạt RAM 18336/20480 (89.5%), flash 57172/65536 (87.2%); đã nạp J-Link thành công.
+
+### 15.24 Tùy chọn khôi phục DC CH2 suy ra từ DUT
+
+- CH2 phần cứng đo AC nên mặc định có thể âm quanh 0. App thêm checkbox `Khôi phục DC CH2 (Vout = gain × Vin)`, mặc định bật và ghi rõ offset là `inferred/not measured`; có thể tắt để xem AC thuần.
+- Gain dùng tỷ số RMS AC Vout/Vin để không phụ thuộc phase; dấu lấy từ correlation. Vin DC ở analyzer lấy đúng tâm DAC `1.65V + offset phát`, không dùng nhầm ADS VREF 2.5V.
+- Smoke COM4 thật với SINE 200Hz, amp 1V, offset +0.5V, range 10V: CH1 `1.152..3.147V`, CH2 reconstructed `3.323..9.327V`, inferred DC `6.310V`, stream OK/no error. Unit test tổng 10/10 đạt.
+- Trong lúc stream, ô Fs được cập nhật bằng `fs_actual` từ frame (khoảng 140077 SPS) thay vì giữ giá trị requested/stale trên UI.

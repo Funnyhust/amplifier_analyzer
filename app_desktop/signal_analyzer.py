@@ -23,6 +23,7 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QColor
 
 from signal_analysis import (
+    DAC_OUTPUT_BIAS_VOLTS,
     DUT_RANGE_DEFAULT_SCALES,
     analyze_channel,
     analyze_dut,
@@ -30,6 +31,7 @@ from signal_analysis import (
     convert_measurement_channels,
     downsample_uniform_indices,
     evaluate_pass_fail,
+    reconstruct_zero_intercept_vout,
 )
 
 APP_SETTINGS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app_settings.json")
@@ -54,6 +56,7 @@ DEFAULT_APP_SETTINGS = {
     "language": "vi",
     "theme": "dark",
     "adc_input_range": "10V",
+    "reconstruct_ch2_dc": True,
     "ch1_color": "#FFEB3B",
     "ch2_color": "#00E5FF",
     "show_grid": True,
@@ -91,6 +94,7 @@ VI_TRANSLATIONS = {
     "CH2 Vout Range:": "Dải CH2 Vout:",
     "Active CH2 Range:": "Dải CH2 đang dùng:",
     "Apply ADC Range": "Áp dụng dải ADC",
+    "Reconstruct CH2 DC (Vout = gain × Vin)": "Khôi phục DC CH2 (Vout = gain × Vin)",
     "CH1 Vin Direct Gain Calibration:": "Hiệu chuẩn gain CH1 Vin trực tiếp:",
     "CH1 Vin Direct Offset:": "Offset CH1 Vin trực tiếp:",
     "Apply Configuration": "Áp dụng cấu hình",
@@ -681,6 +685,7 @@ class SignalAnalyzerApp(QMainWindow):
             settings["theme"] = DEFAULT_APP_SETTINGS["theme"]
         if settings["adc_input_range"] not in ("0.3V", "3.3V", "10V"):
             settings["adc_input_range"] = DEFAULT_APP_SETTINGS["adc_input_range"]
+        settings["reconstruct_ch2_dc"] = bool(settings["reconstruct_ch2_dc"])
         return settings
 
     def save_app_settings(self):
@@ -812,6 +817,16 @@ class SignalAnalyzerApp(QMainWindow):
         self.btn_apply_range.clicked.connect(
             lambda: self.apply_range_config(show_message=True)
         )
+        self.chk_reconstruct_ch2_dc = QCheckBox(
+            "Reconstruct CH2 DC (Vout = gain × Vin)"
+        )
+        self.chk_reconstruct_ch2_dc.setChecked(
+            self.app_settings["reconstruct_ch2_dc"]
+        )
+        self.chk_reconstruct_ch2_dc.toggled.connect(
+            self.update_ch2_reconstruction_setting
+        )
+        self.lbl_ch2_dc_status = QLabel("CH2 DC: --")
         
         config_layout.addRow("Waveform Type:", self.ana_combo_wave)
         config_layout.addRow("TX Frequency:", self.ana_spin_freq)
@@ -835,6 +850,8 @@ class SignalAnalyzerApp(QMainWindow):
         range_layout.addRow("CH2 Vout Range:", self.ana_combo_range)
         range_layout.addRow("Active CH2 Range:", self.lbl_range_status)
         range_layout.addRow(self.btn_apply_range)
+        range_layout.addRow(self.chk_reconstruct_ch2_dc)
+        range_layout.addRow(self.lbl_ch2_dc_status)
         ana_layout.addWidget(range_group)
         
         # ERROR ESTIMATES PANEL
@@ -1149,7 +1166,7 @@ class SignalAnalyzerApp(QMainWindow):
         self.plot_osc.setLabel('left', 'Voltage', 'V'); self.plot_osc.setLabel('bottom', 'Time', 's')
         self.curve_ch1 = self.plot_osc.plot(pen=pg.mkPen(self.ch1_color, width=2), name="CH1 (Vin)")
         self.curve_ch2 = self.plot_osc.plot(
-            pen=pg.mkPen(self.ch2_color, width=2), name="CH2 (Vout AC)"
+            pen=pg.mkPen(self.ch2_color, width=2), name="CH2 (Vout)"
         )
         self.curve_ch1.setDownsampling(auto=True, method="peak")
         self.curve_ch2.setDownsampling(auto=True, method="peak")
@@ -1192,7 +1209,7 @@ class SignalAnalyzerApp(QMainWindow):
         ]
         self.channel_table = QTableWidget(len(self.channel_metric_names), 3)
         self.channel_table.setHorizontalHeaderLabels(
-            ["Metric", "CH1 Vin", "CH2 Vout (AC)"]
+            ["Metric", "CH1 Vin", "CH2 Vout"]
         )
         self.channel_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.channel_table.verticalHeader().setVisible(False)
@@ -1520,7 +1537,7 @@ class SignalAnalyzerApp(QMainWindow):
         self.combo_theme.blockSignals(False)
 
         self.channel_table.setHorizontalHeaderLabels([
-            self.tr("Metric"), "CH1 Vin", "CH2 Vout (AC)"
+            self.tr("Metric"), "CH1 Vin", "CH2 Vout"
         ])
         for row, source in enumerate(self.channel_metric_names):
             self.channel_table.setItem(row, 0, QTableWidgetItem(self.tr(source)))
@@ -1632,6 +1649,9 @@ class SignalAnalyzerApp(QMainWindow):
         self.combo_theme.setCurrentIndex(self.combo_theme.findData(self.app_settings["theme"]))
         self.ana_combo_range.setCurrentIndex(
             self.ana_combo_range.findData(self.app_settings["adc_input_range"])
+        )
+        self.chk_reconstruct_ch2_dc.setChecked(
+            self.app_settings["reconstruct_ch2_dc"]
         )
         self.chk_show_grid.setChecked(self.app_settings["show_grid"])
         self.chk_auto_scale.setChecked(self.app_settings["auto_scale"])
@@ -1871,6 +1891,37 @@ class SignalAnalyzerApp(QMainWindow):
         except (KeyError, ValueError):
             return fallback
 
+    def update_ch2_reconstruction_setting(self, enabled):
+        self.app_settings["reconstruct_ch2_dc"] = bool(enabled)
+        self.save_app_settings()
+        if not enabled:
+            self.lbl_ch2_dc_status.setText("CH2 DC: AC only / measured")
+
+    def reconstruct_ch2_dc(self, vin, vout_ac, update_status=False):
+        """Infer an unmeasured DC level for a zero-intercept linear DUT."""
+        vin = np.asarray(vin, dtype=np.float64)
+        vout_ac = np.asarray(vout_ac, dtype=np.float64)
+        if not self.chk_reconstruct_ch2_dc.isChecked() or vin.size < 4:
+            return vout_ac
+
+        if self.current_live_mode == "ANALYZER":
+            vin_dc = DAC_OUTPUT_BIAS_VOLTS + float(
+                self.ana_spin_offset.value()
+            )
+        else:
+            vin_dc = float(np.mean(vin))
+        try:
+            reconstructed, _signed_gain, inferred_dc = (
+                reconstruct_zero_intercept_vout(vin, vout_ac, vin_dc)
+            )
+        except ValueError:
+            return vout_ac
+        if update_status:
+            self.lbl_ch2_dc_status.setText(
+                f"CH2 DC inferred: {inferred_dc:.3f} V (not measured)"
+            )
+        return reconstructed
+
     def reset_hardware_history(self):
         """Start a new contiguous sample-time display without stale captures."""
         self.hardware_history.clear()
@@ -2015,6 +2066,7 @@ class SignalAnalyzerApp(QMainWindow):
             self.calibration_value(f"adc2_r{range_index}_m", 1.0),
             self.calibration_value(f"adc2_r{range_index}_c", 0.0),
         )
+        ch2 = self.reconstruct_ch2_dc(ch1, ch2, update_status=False)
         self.append_hardware_history(
             indices / fs, ch1, ch2, duration_s=count / fs
         )
@@ -2038,14 +2090,19 @@ class SignalAnalyzerApp(QMainWindow):
             self.calibration_value(f"adc2_r{range_index}_m", 1.0),
             self.calibration_value(f"adc2_r{range_index}_c", 0.0),
         )
+        ch2 = self.reconstruct_ch2_dc(ch1, ch2, update_status=True)
         fs = float(device_result.get("fs_actual", self.ana_spin_fs.value()))
         if fs <= 0.0:
             fs = self.ana_spin_fs.value()
+        streaming = bool(capture.get("streaming"))
+        if streaming and abs(self.ana_spin_fs.value() - fs) >= 0.5:
+            self.ana_spin_fs.blockSignals(True)
+            self.ana_spin_fs.setValue(fs)
+            self.ana_spin_fs.blockSignals(False)
         t = np.arange(ch1.size, dtype=np.float64) / fs
         self.last_communication_ok = True
         self.last_data_complete = True
         self.last_communication_error = ""
-        streaming = bool(capture.get("streaming"))
         self.handle_samples(t, ch1, ch2, ch1_raw, ch2_raw,
                             update_plot=not streaming)
         if append_history:
@@ -2303,7 +2360,7 @@ class SignalAnalyzerApp(QMainWindow):
                 with open(csv_path, mode='w', newline='', encoding="utf-8") as f:
                     writer = csv.writer(f)
                     writer.writerow(
-                        ["Time (s)", "CH1 Vin (V)", "CH2 Vout AC (V)"]
+                        ["Time (s)", "CH1 Vin (V)", "CH2 Vout (V)"]
                     )
                     for i in range(len(self.last_raw_ch1)):
                         writer.writerow([self.last_raw_time[i], self.last_raw_ch1[i], self.last_raw_ch2[i]])
