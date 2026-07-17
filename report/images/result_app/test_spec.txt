@@ -1,0 +1,20 @@
+REAL HARDWARE APP CAPTURE - COM4 - STM32F103
+
+Group 1 - frequency sweep
+- Common signal: center 2.0 V, amplitude +/-1.0 V
+- CH2 range: 3.3 V
+- Frequencies: 100 Hz, 1000 Hz, 5000 Hz, 10000 Hz, 20000 Hz
+
+Group 2 - amplitude/range sweep at 1000 Hz
+- Center 1.65 V, amplitude +/-1.0 V, CH2 range 10 V
+- Center 1.0 V, amplitude +/-0.5 V, CH2 range 10 V
+- Center 0.150 V, amplitude +/-0.050 V, CH2 range 0.3 V
+- Center 0.5 V, amplitude +/-0.5 V, CH2 range 3.3 V
+
+Each test has:
+- *_waveform.png: real running SignalAnalyzerApp waveform tab
+- *_results.png: real running SignalAnalyzerApp measurement-results tab
+- *_metadata.json: exact applied configuration and communication status
+
+Requested Fs: 140000 SPS
+Reported timer Fs: 140077 SPS

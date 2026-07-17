@@ -38,6 +38,7 @@ APP_SETTINGS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ap
 SERIAL_RX_BUFFER_BYTES = 4 * 1024 * 1024
 SERIAL_TX_BUFFER_BYTES = 64 * 1024
 PLOT_MAX_POINTS = 20000
+HISTORY_BLOCK_MAX_POINTS = 4096
 
 
 def configure_serial_driver_buffers(serial_conn):
@@ -778,7 +779,7 @@ class SignalAnalyzerApp(QMainWindow):
             lambda _value: self.update_error_metrics())
         
         self.ana_spin_amp = QDoubleSpinBox()
-        self.ana_spin_amp.setRange(0.1, 3.3)
+        self.ana_spin_amp.setRange(0.01, 3.3)
         self.ana_spin_amp.setValue(0.3)
         self.ana_spin_amp.setSuffix(" V")
         
@@ -892,8 +893,8 @@ class SignalAnalyzerApp(QMainWindow):
         self.chk_follow_stream = QCheckBox("Follow live data")
         self.chk_follow_stream.setChecked(True)
         self.spin_view_window = QDoubleSpinBox()
-        self.spin_view_window.setRange(0.05, 20.0)
-        self.spin_view_window.setDecimals(2)
+        self.spin_view_window.setRange(0.001, 20.0)
+        self.spin_view_window.setDecimals(3)
         self.spin_view_window.setSingleStep(0.25)
         self.spin_view_window.setValue(2.0)
         self.spin_view_window.setSuffix(" s")
@@ -1985,30 +1986,37 @@ class SignalAnalyzerApp(QMainWindow):
             return
         self.last_history_plot_at = now
 
-        times = [entry[0] for entry in self.hardware_history]
-        values1 = [entry[1] for entry in self.hardware_history]
-        values2 = [entry[2] for entry in self.hardware_history]
-        self.last_raw_time = np.concatenate(times) if times else np.array([])
-        self.last_raw_ch1 = np.concatenate(values1) if values1 else np.array([])
-        self.last_raw_ch2 = np.concatenate(values2) if values2 else np.array([])
+        display_left = None
+        display_right = None
+        history_entries = list(self.hardware_history)
+        if self.chk_follow_stream.isChecked():
+            display_right = max(0.1, self.hardware_history_cursor_s)
+            window = min(
+                self.history_window_s,
+                float(self.spin_view_window.value()),
+            )
+            display_left = max(0.0, display_right - window)
+            history_entries = [
+                entry for entry in history_entries
+                if entry[0].size and entry[0][-1] >= display_left
+            ]
 
-        if times:
-            plot_t = self.last_raw_time
-            plot_ch1 = self.last_raw_ch1
-            plot_ch2 = self.last_raw_ch2
-            display_left = None
-            display_right = None
-            if self.chk_follow_stream.isChecked():
-                display_right = max(0.1, self.hardware_history_cursor_s)
-                window = min(
-                    self.history_window_s,
-                    float(self.spin_view_window.value()),
-                )
-                display_left = max(0.0, display_right - window)
-                visible = plot_t >= display_left
-                plot_t = plot_t[visible]
-                plot_ch1 = plot_ch1[visible]
-                plot_ch2 = plot_ch2[visible]
+        times = [entry[0] for entry in history_entries]
+        values1 = [entry[1] for entry in history_entries]
+        values2 = [entry[2] for entry in history_entries]
+        plot_t = np.concatenate(times) if times else np.array([])
+        plot_ch1 = np.concatenate(values1) if values1 else np.array([])
+        plot_ch2 = np.concatenate(values2) if values2 else np.array([])
+        if display_left is not None and plot_t.size:
+            visible = plot_t >= display_left
+            plot_t = plot_t[visible]
+            plot_ch1 = plot_ch1[visible]
+            plot_ch2 = plot_ch2[visible]
+        self.last_raw_time = plot_t
+        self.last_raw_ch1 = plot_ch1
+        self.last_raw_ch2 = plot_ch2
+
+        if plot_t.size:
             if plot_t.size > PLOT_MAX_POINTS:
                 display_indices = downsample_uniform_indices(
                     plot_t.size, PLOT_MAX_POINTS
@@ -2050,7 +2058,7 @@ class SignalAnalyzerApp(QMainWindow):
         count = ch1_raw.size
         if count == 0:
             return
-        target_points = 256
+        target_points = HISTORY_BLOCK_MAX_POINTS
         if count > target_points:
             indices = downsample_uniform_indices(count, target_points)
             ch1_raw = ch1_raw[indices]

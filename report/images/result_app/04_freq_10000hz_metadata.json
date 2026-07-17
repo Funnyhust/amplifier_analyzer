@@ -1,0 +1,24 @@
+{
+  "source": "D:\\hust\\amplifier_analyzer\\test.txt",
+  "hardware": "STM32F103 + COM4, real SignalAnalyzerApp capture",
+  "assumptions": [
+    "The repeated fourth 1000 Hz entry was interpreted as 10000 Hz.",
+    "The requested range 0.4 was mapped to the available 0.3V range."
+  ],
+  "tests": [
+    {
+      "id": "04_freq_10000hz",
+      "frequency": 10000,
+      "center": 2.0,
+      "amplitude": 1.0,
+      "range": "3.3V",
+      "requested_fs": 140000,
+      "displayed_fs": 140077.0,
+      "waveform_image": "04_freq_10000hz_waveform.png",
+      "results_image": "04_freq_10000hz_results.png",
+      "communication_ok": true,
+      "communication_error": "",
+      "ch2_dc_status": "CH2 DC inferred: 5.936 V (not measured)"
+    }
+  ]
+}
