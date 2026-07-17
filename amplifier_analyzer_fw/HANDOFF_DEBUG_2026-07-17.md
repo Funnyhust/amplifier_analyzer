@@ -543,3 +543,10 @@ Chưa đạt 200 kSPS continuous. Giới hạn hiện tại không phải do ri�
 - DMA ADC đặt very-high, DMA DAC medium để bảo vệ cửa sổ A/B. DAC DMA được xác nhận Vin raw `1100..1600`, FFT `199.967 Hz`, khoảng 50 kframe/s.
 - Soak ADC 110 kSPS + DAC update 50 kHz trong 30.004 s: host nhận `3297792` mẫu (`109911.8 SPS`), 6441 frame; CRC/sequence lỗi 0; firmware `PRODUCED=3298255, OVERRUN=0, INVALID=0, OVERWRITE=0`; DAC `TX_ERR=0`.
 - Build cuối checkpoint: RAM khoảng 89.5%, flash khoảng 87.1%. App live stream nâng lên 110 kSPS.
+
+### 15.10 Checkpoint 120 kSPS
+
+- 120 kSPS ban đầu lỗi khoảng 100--118 mẫu/s khi bật USB, nhưng ADC/SPI chạy nội bộ 10 giây ở 120 kSPS có `OVERRUN=0`, chứng minh đây chưa phải giới hạn ADC hoặc SPI.
+- Root cause là main khóa toàn bộ IRQ khi snapshot ring counter trước mỗi frame USB. Hai counter 32-bit đã aligned và được truy cập nguyên tử trên Cortex-M3; đường ring là single-producer/single-consumer nên bỏ global IRQ mask và dùng snapshot không khóa.
+- Soak ADC 120 kSPS + DAC update 50 kHz trong 30.000 s: host nhận `3599360` mẫu (`119978.7 SPS`), 7030 frame; CRC/sequence/junk lỗi 0; firmware `PRODUCED=3599984, OVERRUN=0, INVALID=0, OVERWRITE=0`; DAC `TX_ERR=0`.
+- Build production: RAM 18328/20480 byte (89.5%), flash 57012/65536 byte (87.0%). App live stream nâng lên 120 kSPS.

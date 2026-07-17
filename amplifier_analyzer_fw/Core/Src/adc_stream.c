@@ -378,7 +378,9 @@ __attribute__((optimize("O3"))) void adc_stream_usb_service(void)
 
     frame = adc_stream_usb_frame(usb_build_index);
 
-    __disable_irq();
+    /* Single producer (ADC ISR), single consumer (main). Cortex-M3 accesses
+     * aligned 32-bit counters atomically, so a write-count snapshot is enough;
+     * globally masking IRQs here steals timing margin from the next sample. */
     available = ring_write_count - ring_read_count;
     if (available >= ADC_STREAM_USB_CHUNK) {
         uint32_t read_index;
@@ -393,7 +395,6 @@ __attribute__((optimize("O3"))) void adc_stream_usb_service(void)
     stream_data_ready =
         ((ring_write_count - ring_read_count) >= ADC_STREAM_USB_CHUNK) ? 1U : 0U;
     fs = stream_stats.requested_fs;
-    __enable_irq();
     if (count == 0U) return;
     build_started = DWT->CYCCNT;
 
