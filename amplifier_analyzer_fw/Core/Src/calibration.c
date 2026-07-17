@@ -22,9 +22,10 @@ void calibration_reset(void) {
     calib_coeffs.dac_a = 1.0f;
     calib_coeffs.dac_b = 0.0f;
     
-    calib_coeffs.adc1_m[0] = 1.0f;   // Direct x1
-    calib_coeffs.adc1_m[1] = 10.0f;  // Attn /10
-    calib_coeffs.adc1_m[2] = 100.0f; // Attn /100
+    /* Vin/ADC1 is a direct path; indices 1/2 remain only for flash ABI. */
+    calib_coeffs.adc1_m[0] = 1.0f;
+    calib_coeffs.adc1_m[1] = 1.0f;
+    calib_coeffs.adc1_m[2] = 1.0f;
     
     calib_coeffs.adc2_m[0] = 1.0f;
     calib_coeffs.adc2_m[1] = 10.0f;
@@ -199,8 +200,9 @@ float calibration_adc_code_to_voltage(uint16_t code, uint8_t channel, uint8_t ra
     float c = 0.0f;
     
     if (channel == 1) {
-        m = calib_coeffs.adc1_m[range];
-        c = calib_coeffs.adc1_c[range];
+        /* Vin is not routed through the CH2 range relays. */
+        m = calib_coeffs.adc1_m[0];
+        c = calib_coeffs.adc1_c[0];
     } else {
         m = calib_coeffs.adc2_m[range];
         c = calib_coeffs.adc2_c[range];

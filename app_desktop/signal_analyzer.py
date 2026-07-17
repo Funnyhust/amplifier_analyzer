@@ -23,13 +23,12 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QColor
 
 from signal_analysis import (
-    ADS7861_VREF_VOLTS,
     analyze_channel,
     analyze_dut,
     calculate_sampling_quality,
+    convert_measurement_channels,
     downsample_extrema_indices,
     evaluate_pass_fail,
-    raw_adc_to_volts,
 )
 
 APP_SETTINGS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app_settings.json")
@@ -87,10 +86,12 @@ VI_TRANSLATIONS = {
     "DAC Gain Bit:": "Hệ số khuếch đại DAC:",
     "Sample Rate Fs:": "Tần số lấy mẫu Fs:",
     "Capture Samples:": "Số mẫu thu:",
-    "DUT Measurement Input Range": "Dải đầu vào đo DUT",
-    "ADC Input Range:": "Dải đầu vào ADC:",
-    "Active Range:": "Dải đang dùng:",
+    "CH2 Vout / DUT Input Range": "Dải CH2 Vout / đầu ra DUT",
+    "CH2 Vout Range:": "Dải CH2 Vout:",
+    "Active CH2 Range:": "Dải CH2 đang dùng:",
     "Apply ADC Range": "Áp dụng dải ADC",
+    "CH1 Vin Direct Gain Calibration:": "Hiệu chuẩn gain CH1 Vin trực tiếp:",
+    "CH1 Vin Direct Offset:": "Offset CH1 Vin trực tiếp:",
     "Apply Configuration": "Áp dụng cấu hình",
     "Signal Error Analysis": "Phân tích sai số tín hiệu",
     "Signal period:": "Chu kỳ tín hiệu:",
@@ -828,10 +829,10 @@ class SignalAnalyzerApp(QMainWindow):
         config_group.setLayout(config_layout)
         ana_layout.addWidget(config_group)
 
-        range_group = QGroupBox("DUT Measurement Input Range")
+        range_group = QGroupBox("CH2 Vout / DUT Input Range")
         range_layout = QFormLayout(range_group)
-        range_layout.addRow("ADC Input Range:", self.ana_combo_range)
-        range_layout.addRow("Active Range:", self.lbl_range_status)
+        range_layout.addRow("CH2 Vout Range:", self.ana_combo_range)
+        range_layout.addRow("Active CH2 Range:", self.lbl_range_status)
         range_layout.addRow(self.btn_apply_range)
         ana_layout.addWidget(range_group)
         
@@ -990,12 +991,8 @@ class SignalAnalyzerApp(QMainWindow):
         
         calib_form.addRow("DAC Gain X2 Scale (a):", self.cal_dac_a)
         calib_form.addRow("DAC Offset (b):", self.cal_dac_b)
-        calib_form.addRow("ADC1 0.3V Gain/Scale:", self.cal_adc1_m0)
-        calib_form.addRow("ADC1 0.3V Offset:", self.cal_adc1_c0)
-        calib_form.addRow("ADC1 3.3V Gain/Scale:", self.cal_adc1_m1)
-        calib_form.addRow("ADC1 3.3V Offset:", self.cal_adc1_c1)
-        calib_form.addRow("ADC1 10V Gain/Scale:", self.cal_adc1_m2)
-        calib_form.addRow("ADC1 10V Offset:", self.cal_adc1_c2)
+        calib_form.addRow("CH1 Vin Direct Gain Calibration:", self.cal_adc1_m0)
+        calib_form.addRow("CH1 Vin Direct Offset:", self.cal_adc1_c0)
         calib_form.addRow("ADC2 0.3V Gain/Scale:", self.cal_adc2_m0)
         calib_form.addRow("ADC2 0.3V Offset:", self.cal_adc2_c0)
         calib_form.addRow("ADC2 3.3V Gain/Scale:", self.cal_adc2_m1)
@@ -1996,13 +1993,11 @@ class SignalAnalyzerApp(QMainWindow):
         else:
             indices = np.arange(count, dtype=np.int64)
         range_index = self.active_range_index(device_result)
-        ch1 = raw_adc_to_volts(
+        ch1, ch2 = convert_measurement_channels(
             ch1_raw,
+            ch2_raw,
             self.calibration_value("adc1_r0_m", 1.0),
             self.calibration_value("adc1_r0_c", 0.0),
-        ) + ADS7861_VREF_VOLTS
-        ch2 = raw_adc_to_volts(
-            ch2_raw,
             self.calibration_value(f"adc2_r{range_index}_m", 1.0),
             self.calibration_value(f"adc2_r{range_index}_c", 0.0),
         )
@@ -2021,13 +2016,11 @@ class SignalAnalyzerApp(QMainWindow):
         ch2_raw = capture["ch2_raw"]
         # ADS B0/Vin is wired directly and never passes through the x10/x100
         # output-range relays. It must always use ADC1 range-0 calibration.
-        ch1 = raw_adc_to_volts(
+        ch1, ch2 = convert_measurement_channels(
             ch1_raw,
+            ch2_raw,
             self.calibration_value("adc1_r0_m", 1.0),
             self.calibration_value("adc1_r0_c", 0.0),
-        ) + ADS7861_VREF_VOLTS
-        ch2 = raw_adc_to_volts(
-            ch2_raw,
             self.calibration_value(f"adc2_r{range_index}_m", 1.0),
             self.calibration_value(f"adc2_r{range_index}_c", 0.0),
         )

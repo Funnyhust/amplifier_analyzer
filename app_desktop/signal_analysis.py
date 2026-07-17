@@ -149,6 +149,27 @@ def raw_adc_to_volts(
     return base_volts * float(scale) + float(offset_mv) / 1000.0
 
 
+def convert_measurement_channels(
+    vin_raw: np.ndarray,
+    vout_raw: np.ndarray,
+    vin_calibration_scale: float = 1.0,
+    vin_calibration_offset_mv: float = 0.0,
+    vout_range_scale: float = 1.0,
+    vout_range_offset_mv: float = 0.0,
+):
+    """Convert the direct Vin path and ranged DUT Vout path independently."""
+    # Vin is wired directly to the ADC and is biased by ADS7861 VREF. Its only
+    # allowed correction is the direct-channel calibration; the selected DUT
+    # relay range must never affect this expression.
+    vin = raw_adc_to_volts(
+        vin_raw, vin_calibration_scale, vin_calibration_offset_mv
+    ) + ADS7861_VREF_VOLTS
+    vout = raw_adc_to_volts(
+        vout_raw, vout_range_scale, vout_range_offset_mv
+    )
+    return vin, vout
+
+
 def downsample_extrema_indices(channels, max_points: int) -> np.ndarray:
     """Select real, time-ordered extrema shared by multiple channels.
 

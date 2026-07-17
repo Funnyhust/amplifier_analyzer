@@ -98,8 +98,9 @@ static void test_controller_generate_usb_sim_frame(void) {
                         current_config.offset_mv;
         uint8_t r = range_control_get_current_range();
 
-        float vin_raw_mv = (vin_mv - calib_coeffs.adc1_c[r]) /
-                           calib_coeffs.adc1_m[r];
+        /* Vin is direct; only simulated Vout follows the selected range. */
+        float vin_raw_mv = (vin_mv - calib_coeffs.adc1_c[0]) /
+                           calib_coeffs.adc1_m[0];
         float vout_raw_mv = (vout_mv - calib_coeffs.adc2_c[r]) /
                             calib_coeffs.adc2_m[r];
 

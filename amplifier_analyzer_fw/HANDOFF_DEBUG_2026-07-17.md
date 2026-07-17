@@ -613,3 +613,10 @@ Chưa đạt 200 kSPS continuous. Giới hạn hiện tại không phải do ri�
 - Root cause nằm ở hai tầng decimation hiển thị: code cũ lấy min/max trong bucket nhưng gán min vào timestamp đầu bucket và max vào timestamp cuối bucket, bất kể thứ tự cực trị thực. Việc này tạo ramp/cạnh đứng giả dù raw ADC và oscilloscope đúng.
 - Thêm `downsample_extrema_indices()`: lấy chỉ số thật của min/max cho cả CH1/CH2, hợp nhất và sắp theo thời gian; đồ thị chỉ dùng các cặp timestamp/value nguyên bản. Cả giảm 4096 xuống tối đa 256 điểm/block và giới hạn history 20000 điểm đều dùng hàm này. DSP/FFT vẫn dùng raw block, không bị decimate.
 - `py_compile` đạt; unit test tăng từ 4 lên 5 và đạt 5/5, gồm test xác nhận extrema của hai kênh giữ đúng vị trí thời gian thật.
+
+### 15.19 Khóa CH1 Vin độc lập với dải CH2 Vout
+
+- Xác nhận wiring/software invariant: CH1 Vin là đường ADC trực tiếp, chỉ CH2 Vout đi qua relay dải. App gom conversion vào `convert_measurement_channels()`: CH1 luôn dùng direct calibration `adc1_r0`, còn chỉ CH2 dùng `adc2_r{range}`.
+- Giao diện đổi tên group thành `CH2 Vout / DUT Input Range`; bỏ các ô ADC1 3.3V/10V khỏi calibration UI vì chúng không có ý nghĩa trên phần cứng này. Struct/protocol cũ vẫn giữ field để tương thích flash.
+- Firmware `calibration_adc_code_to_voltage()` ép CH1 dùng index 0 bất kể range caller truyền; USB simulation cũng đổi sang `adc1_m/c[0]`. Default ADC1 index 1/2 đặt 1.0 và chỉ còn là field tương thích ABI.
+- Unit test mới đặt hệ số CH2 bằng 100 và xác nhận CH1 vẫn đúng direct voltage; toàn bộ 6/6 test đạt. Production build đạt RAM `18336/20480 = 89.5%`, flash `57140/65536 = 87.2%`; đã nạp thành công qua J-Link và reset MCU.

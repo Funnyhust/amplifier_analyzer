@@ -6,7 +6,7 @@
 typedef struct {
     float dac_a;
     float dac_b;
-    float adc1_m[3]; // 3 ranges: 00 (x1), 01 (/10), 10 (/100)
+    float adc1_m[3]; // Vin direct: index 0 used; 1/2 retained for flash ABI
     float adc1_c[3];
     float adc2_m[3];
     float adc2_c[3];

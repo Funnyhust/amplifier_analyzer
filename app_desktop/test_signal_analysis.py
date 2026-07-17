@@ -7,6 +7,7 @@ from signal_analysis import (
     analyze_channel,
     analyze_dut,
     calculate_sampling_quality,
+    convert_measurement_channels,
     downsample_extrema_indices,
     evaluate_pass_fail,
     raw_adc_to_volts,
@@ -71,6 +72,19 @@ class SamplingQualityTests(unittest.TestCase):
         # Two six-sample buckets retain each channel's extrema at their real
         # positions, sorted in time. No value is moved to a bucket boundary.
         np.testing.assert_array_equal(indices, [0, 3, 5, 6, 8, 9])
+
+    def test_dut_range_scale_never_changes_direct_vin(self):
+        raw = np.array([1024, 2048, 3072])
+        vin, vout = convert_measurement_channels(
+            raw, raw,
+            vin_calibration_scale=1.0,
+            vin_calibration_offset_mv=0.0,
+            vout_range_scale=100.0,
+            vout_range_offset_mv=0.0,
+        )
+        expected_vin = raw_adc_to_volts(raw) + 2.5
+        np.testing.assert_allclose(vin, expected_vin)
+        np.testing.assert_allclose(vout, raw_adc_to_volts(raw) * 100.0)
 
 
 if __name__ == "__main__":
