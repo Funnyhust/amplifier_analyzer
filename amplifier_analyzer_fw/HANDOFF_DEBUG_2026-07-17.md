@@ -573,3 +573,13 @@ Chưa đạt 200 kSPS continuous. Giới hạn hiện tại không phải do ri�
 - Quét end-to-end 4 s với DAC 50 kHz: 142/144/145 kSPS sạch (`OVERRUN=INVALID=OVERWRITE=0`, CRC/sequence 0); 146 kSPS bắt đầu `OVERWRITE=2560`, 148 kSPS `OVERWRITE=101888`; 150 kSPS không usable. Vì checkpoint theo bước 10 kSPS nên app/production vẫn giữ 140 kSPS, còn 145 kSPS chỉ là headroom ngắn hạn chưa qualify soak.
 - ADC/SPI nội bộ đã sạch đến 150 kSPS. Giới hạn hiện tại là CPU đóng gói cộng transport USB CDC single-PMA-buffer, không phải clock 72 MHz nói chung và không phải SPI2 18 MHz.
 - Đã thử bật PMA double-buffer cho CDC IN 0x81 nhưng ST CDC/PCD state machine hiện tại write-timeout ngay từ PING; thay đổi đã rollback. Muốn vượt 150 kSPS lossless cần refactor đồng bộ callback/state machine USB double-buffer hoặc chuyển transport USB riêng, không chỉ đổi `PCD_DBL_BUF`.
+
+### 15.14 DAC DMA 200 kupdate/s đồng thời ADC 140 kSPS
+
+- Xóa policy cũ `DAC_MAX_ISR_RATE_HZ=50000`; giới hạn production mới là `DAC_MAX_DMA_RATE_HZ=200000`, tương ứng chu kỳ 5 us và còn khoảng 0.5 us so với settling DAC khoảng 4.5 us.
+- TIM3 + DMA1 Ch2/3/6 vẫn điều khiển CS và SPI1 hoàn toàn bằng phần cứng. DMA Ch3 không còn phát TC interrupt mỗi vòng LUT; chỉ bật TE interrupt khi transfer error. Với sine 20 kHz việc này loại bỏ 20,000 IRQ/s không cần thiết.
+- DAC và ADC độc lập: DAC luôn chọn mật độ điểm lớn nhất tới 200 kupdate/s; `N=min(256, floor(200000/f_signal))`, tối thiểu 4 điểm. Ví dụ 20 kHz dùng 10 điểm/chu kỳ và 200 kupdate/s; 200 Hz dùng đủ 256 điểm và 51.2 kupdate/s.
+- Sửa parser CONFIG: key `FS` trước đây match nhầm chuỗi con trong `OFFSET_MV`, làm FS luôn giữ giá trị cũ. Parser mới chỉ nhận key ở đầu field hoặc ngay sau dấu phẩy.
+- Quét sine 20 kHz ở 80/100/120/140/160/180/200 kupdate/s đồng thời ADC/USB 140 kSPS, mỗi mức 3 s: CRC/sequence/junk 0; ADC `OVERRUN=INVALID=OVERWRITE=0`; DAC `TX_ERR=0`; raw Vin luôn có tín hiệu 20 kHz.
+- Soak 30.000 s tại DAC 200 kupdate/s + ADC 140 kSPS: host `4199936` mẫu (`139997.9 SPS`), 8203 frame; CRC/sequence/junk 0; ADC `PRODUCED=4200959, OVERRUN=0, INVALID=0, OVERWRITE=0`; DAC `TX_ERR=0`, raw Vin `1100..1593`.
+- Kiểm tra lại đúng cấu hình app `CONFIG.FS=140000`: status DAC vẫn `UPDATE_HZ=200000`; stream ADC 140 kSPS 10 s nhận `1399296` mẫu, mọi counter lỗi bằng 0.

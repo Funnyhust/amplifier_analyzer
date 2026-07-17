@@ -143,11 +143,6 @@ void mcp4822_flush_isr(void) {
 #endif
 }
 
-void mcp4822_account_dma_cycle(uint32_t frames, uint16_t last_frame) {
-    mcp4822_tx_ok_count += frames;
-    mcp4822_last_frame = last_frame;
-}
-
 void mcp4822_account_dma_error(void) {
     mcp4822_tx_error_count++;
 }

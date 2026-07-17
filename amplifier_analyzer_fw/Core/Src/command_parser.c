@@ -86,11 +86,15 @@ void command_parser_process(void) {
 }
 
 static char* get_param_value(char *str, const char *key) {
-    char *p = strstr(str, key);
-    if (!p) return NULL;
-    p += strlen(key);
-    if (*p == '=') {
-        return p + 1;
+    size_t key_len = strlen(key);
+    char *p = str;
+
+    while ((p = strstr(p, key)) != NULL) {
+        uint8_t at_field_start = (p == str || p[-1] == ',') ? 1U : 0U;
+        if (at_field_start != 0U && p[key_len] == '=') {
+            return p + key_len + 1U;
+        }
+        p++;
     }
     return NULL;
 }

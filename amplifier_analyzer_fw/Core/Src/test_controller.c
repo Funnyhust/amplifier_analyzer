@@ -30,8 +30,9 @@ static uint16_t last_adc_word_b = 0U;
 // Dual ADC buffers and DAC LUT buffers
 #define MAX_ADC_BUF 256
 #define MAX_DAC_LUT 256
-/* Register-polling DAC updates run in TIM3 IRQ; leave CPU time for ADC/USB. */
-#define DAC_MAX_ISR_RATE_HZ 50000U
+/* MCP4822 settles in about 4.5 us. Keep a 5 us update period so the analog
+ * output settles before the next code while timer/DMA handles all transfers. */
+#define DAC_MAX_DMA_RATE_HZ 200000U
 uint32_t adc_dual_buffer[MAX_ADC_BUF]; // Interleaved ADC1/ADC2 samples
 uint16_t dac_lut[MAX_DAC_LUT];
 static uint16_t dac_dma_frames[MAX_DAC_LUT] __attribute__((aligned(4)));
@@ -162,14 +163,17 @@ void test_controller_init(void) {
 }
 
 static void test_controller_generate_lut(void) {
-    uint32_t N = current_config.fs / current_config.freq;
-    uint32_t max_points_by_cpu = DAC_MAX_ISR_RATE_HZ / current_config.freq;
+    uint32_t target_update_hz = DAC_MAX_DMA_RATE_HZ;
+    uint32_t N;
+
+    /* ADC Fs and DAC update rate are independent hardware pipelines. Always
+     * maximize DAC point density within the analog settling limit; low signal
+     * frequencies naturally stop at MAX_DAC_LUT points per period. */
+    N = target_update_hz / current_config.freq;
 
     /* Four points is the minimum that can still represent a sine waveform. */
-    if (max_points_by_cpu < 4U) max_points_by_cpu = 4U;
     if (N < 4U) N = 4U;
     if (N > MAX_DAC_LUT) N = MAX_DAC_LUT;
-    if (N > max_points_by_cpu) N = max_points_by_cpu;
     dac_lut_size = N;
     
     for (uint32_t i = 0; i < N; i++) {
@@ -235,13 +239,9 @@ static uint8_t test_controller_dac_stream_start(void) {
     if (current_config.fs == 0U || current_config.freq == 0U ||
         dac_lut_size == 0U) return 0U;
 
-    /*
-     * The LUT may be capped at MAX_DAC_LUT.  Clocking it at ADC Fs would then
-     * change the generated signal frequency (for example 200 kHz / 256 =
-     * 781.25 Hz instead of the configured 200 Hz) and needlessly starve the
-     * CPU with DAC interrupts.  One complete LUT must always equal one signal
-     * period, independently of the requested ADC sample rate.
-     */
+    /* One complete LUT is exactly one signal period. Low frequencies may hit
+     * MAX_DAC_LUT before the 200 kupdate/s ceiling, while higher frequencies
+     * use the full timer/DMA rate without changing the configured frequency. */
     if (current_config.freq > UINT32_MAX / dac_lut_size) return 0U;
     dac_update_hz = current_config.freq * dac_lut_size;
     if (mcp4822_write_raw(
@@ -281,7 +281,7 @@ static uint8_t test_controller_dac_stream_start(void) {
     DMA1_Channel3->CNDTR = dac_lut_size;
     DMA1_Channel3->CCR = DMA_CCR_DIR | DMA_CCR_MINC | DMA_CCR_CIRC |
                          DMA_CCR_PSIZE_0 | DMA_CCR_MSIZE_0 |
-                         DMA_CCR_TCIE | DMA_CCR_PL_0;
+                         DMA_CCR_TEIE | DMA_CCR_PL_0;
 
     DMA1_Channel6->CPAR = (uint32_t)&GPIOA->BSRR;
     DMA1_Channel6->CMAR = (uint32_t)&dac_cs_set_word;
@@ -361,11 +361,6 @@ void test_controller_dac_dma_irq(void) {
         test_controller_dac_stream_stop();
         return;
     }
-    if ((isr & DMA_ISR_TCIF3) != 0U) {
-        DMA1->IFCR = DMA_IFCR_CTCIF3;
-        mcp4822_account_dma_cycle(
-            dac_lut_size, dac_dma_frames[dac_lut_size - 1U]);
-    }
 #endif
 }
 
@@ -382,6 +377,7 @@ uint8_t test_controller_configure(const TestConfig_t *config) {
 
     if (config == NULL || config->samples == 0U ||
         config->samples > MAX_ADC_BUF || config->freq == 0U ||
+        config->freq > (DAC_MAX_DMA_RATE_HZ / 4U) ||
         config->fs < config->freq ||
         (config->dac_gain != 1U && config->dac_gain != 2U)) {
         last_test_error = TEST_ERROR_CONFIG_FIELDS;
