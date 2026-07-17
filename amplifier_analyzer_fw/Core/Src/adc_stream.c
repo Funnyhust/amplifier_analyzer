@@ -3,25 +3,22 @@
 #include "protocol.h"
 #include <string.h>
 
-#define ADC_STREAM_RING_SIZE 1024U
+#define ADC_STREAM_RING_SIZE 2048U
 #define ADC_STREAM_USB_CHUNK 512U
 #define ADC_STREAM_MAX_FS_HZ 100000U
 #define ADC_STREAM_META_BYTES 10U
 #define ADC_STREAM_FRAME_BYTES \
     (5U + ADC_STREAM_META_BYTES + ADC_STREAM_USB_CHUNK * 4U + 1U)
 
-typedef struct {
-    uint16_t word_a;
-    uint16_t word_b;
-    uint16_t sequence_low;
-} adc_stream_raw_entry_t;
-
 static ads7861_t *stream_dev;
 static volatile uint8_t stream_running;
 static volatile uint8_t dma_word_state;
 static volatile uint8_t dma_rx[4];
 static uint8_t dma_dummy;
-static volatile adc_stream_raw_entry_t raw_ring[ADC_STREAM_RING_SIZE];
+static volatile uint16_t raw_word_a[ADC_STREAM_RING_SIZE];
+static volatile uint16_t raw_word_b[ADC_STREAM_RING_SIZE];
+static volatile uint16_t raw_chunk_sequence[
+    ADC_STREAM_RING_SIZE / ADC_STREAM_USB_CHUNK];
 static volatile uint32_t ring_write_count;
 static volatile uint32_t ring_read_count;
 static volatile uint32_t sample_tick_sequence;
@@ -65,8 +62,7 @@ static void adc_stream_dma_begin_pair(void)
     DMA1_Channel4->CPAR = (uint32_t)&SPI2->DR;
     DMA1_Channel4->CMAR = (uint32_t)dma_rx;
     DMA1_Channel4->CNDTR = 4U;
-    DMA1_Channel4->CCR = DMA_CCR_MINC | DMA_CCR_HTIE | DMA_CCR_TCIE |
-                         DMA_CCR_PL_1;
+    DMA1_Channel4->CCR = DMA_CCR_MINC | DMA_CCR_HTIE | DMA_CCR_PL_1;
 
     DMA1_Channel5->CPAR = (uint32_t)&SPI2->DR;
     DMA1_Channel5->CMAR = (uint32_t)&dma_dummy;
@@ -221,17 +217,64 @@ void adc_stream_stop(void)
     }
 }
 
-void adc_stream_timer_irq(void)
+static inline void adc_stream_finish_pair(void)
 {
+    uint16_t word_a;
+    uint16_t word_b;
+    uint32_t guard = 1000U;
+    uint32_t write_index;
+
+    DMA1->IFCR = DMA_IFCR_CGIF4 | DMA_IFCR_CGIF5;
+    DMA1_Channel4->CCR &= ~DMA_CCR_EN;
+    DMA1_Channel5->CCR &= ~DMA_CCR_EN;
+    SPI2->CR2 &= ~(SPI_CR2_RXDMAEN | SPI_CR2_TXDMAEN);
+    while ((SPI2->SR & SPI_SR_BSY) != 0U && --guard != 0U) {}
+
+    word_a = (uint16_t)((((uint16_t)dma_rx[0] << 8) | dma_rx[1]) << 1);
+    word_b = (uint16_t)((((uint16_t)dma_rx[2] << 8) | dma_rx[3]) << 1);
+    stream_dev->convst_port->BRR = stream_dev->convst_pin;
+
+    write_index = ring_write_count & (ADC_STREAM_RING_SIZE - 1U);
+    if ((ring_write_count - ring_read_count) >= ADC_STREAM_RING_SIZE) {
+        ring_read_count += ADC_STREAM_USB_CHUNK;
+        stream_stats.ring_overwrite += ADC_STREAM_USB_CHUNK;
+    }
+    if ((write_index & (ADC_STREAM_USB_CHUNK - 1U)) == 0U) {
+        raw_chunk_sequence[write_index / ADC_STREAM_USB_CHUNK] =
+            (uint16_t)active_sample_sequence;
+    }
+    raw_word_a[write_index] = word_a;
+    raw_word_b[write_index] = word_b;
+    ring_write_count++;
+    stream_stats.produced++;
+    if ((ring_write_count - ring_read_count) >= ADC_STREAM_USB_CHUNK) {
+        stream_data_ready = 1U;
+    }
+
+    stream_dev->cs_port->BSRR = stream_dev->cs_pin;
+    dma_word_state = 0U;
+}
+
+__attribute__((optimize("O3"))) void adc_stream_timer_irq(void)
+{
+    uint32_t next_sequence;
+
     if ((TIM2->SR & TIM_SR_UIF) == 0U) return;
     TIM2->SR &= ~TIM_SR_UIF;
     if (stream_running == 0U) return;
-    active_sample_sequence = sample_tick_sequence++;
+
+    next_sequence = sample_tick_sequence++;
     if (dma_word_state != 0U) {
-        stream_stats.timer_overrun++;
-        return;
+        if (dma_word_state == 2U &&
+            (DMA1->ISR & DMA_ISR_TCIF4) != 0U) {
+            adc_stream_finish_pair();
+        } else {
+            stream_stats.timer_overrun++;
+            return;
+        }
     }
 
+    active_sample_sequence = next_sequence;
     stream_dev->cs_port->BRR = stream_dev->cs_pin;
     adc_stream_pulse_convst();
     dma_word_state = 1U;
@@ -240,10 +283,6 @@ void adc_stream_timer_irq(void)
 
 void adc_stream_dma_irq(void)
 {
-    uint16_t word_a;
-    uint16_t word_b;
-    uint32_t guard = 1000U;
-
     if ((DMA1->ISR & DMA_ISR_HTIF4) != 0U && dma_word_state == 1U) {
         /* RX remains armed for all four bytes. Pause SCK after word A by
          * rearming only the two-byte TX DMA, then expose word B. */
@@ -256,41 +295,7 @@ void adc_stream_dma_irq(void)
         DMA1_Channel5->CCR |= DMA_CCR_EN;
         return;
     }
-
-    if ((DMA1->ISR & DMA_ISR_TCIF4) == 0U) {
-        DMA1->IFCR = DMA_IFCR_CGIF4 | DMA_IFCR_CGIF5;
-        return;
-    }
     DMA1->IFCR = DMA_IFCR_CGIF4 | DMA_IFCR_CGIF5;
-    DMA1_Channel4->CCR &= ~DMA_CCR_EN;
-    DMA1_Channel5->CCR &= ~DMA_CCR_EN;
-    SPI2->CR2 &= ~(SPI_CR2_RXDMAEN | SPI_CR2_TXDMAEN);
-    while ((SPI2->SR & SPI_SR_BSY) != 0U && --guard != 0U) {}
-
-    word_a = (uint16_t)((((uint16_t)dma_rx[0] << 8) | dma_rx[1]) << 1);
-    word_b = (uint16_t)((((uint16_t)dma_rx[2] << 8) | dma_rx[3]) << 1);
-    stream_dev->convst_port->BRR = stream_dev->convst_pin;
-
-    if (dma_word_state == 2U) {
-        uint32_t write_index = ring_write_count &
-                               (ADC_STREAM_RING_SIZE - 1U);
-        if ((ring_write_count - ring_read_count) >= ADC_STREAM_RING_SIZE) {
-            ring_read_count++;
-            stream_stats.ring_overwrite++;
-        }
-        raw_ring[write_index].word_a = word_a;
-        raw_ring[write_index].word_b = word_b;
-        raw_ring[write_index].sequence_low =
-            (uint16_t)active_sample_sequence;
-        ring_write_count++;
-        stream_stats.produced++;
-        if ((ring_write_count - ring_read_count) >= ADC_STREAM_USB_CHUNK) {
-            stream_data_ready = 1U;
-        }
-    }
-
-    stream_dev->cs_port->BSRR = stream_dev->cs_pin;
-    dma_word_state = 0U;
 }
 
 void adc_stream_get_stats(adc_stream_stats_t *stats)
@@ -349,7 +354,8 @@ __attribute__((optimize("O3"))) void adc_stream_usb_service(void)
         uint32_t read_index;
         read_start = ring_read_count;
         read_index = read_start & (ADC_STREAM_RING_SIZE - 1U);
-        first_sequence_low = raw_ring[read_index].sequence_low;
+        first_sequence_low = raw_chunk_sequence[
+            read_index / ADC_STREAM_USB_CHUNK];
         /* Reserve before parsing; the other USB frame buffer may be in flight. */
         ring_read_count += ADC_STREAM_USB_CHUNK;
         count = ADC_STREAM_USB_CHUNK;
@@ -374,21 +380,13 @@ __attribute__((optimize("O3"))) void adc_stream_usb_service(void)
     pos = 15U;
     for (uint16_t i = 0U; i < count; i++) {
         uint32_t index = (read_start + i) & (ADC_STREAM_RING_SIZE - 1U);
-        adc_stream_raw_entry_t entry;
         uint16_t word_a;
         uint16_t word_b;
         uint16_t vin;
         uint16_t vout;
 
-        entry.word_a = raw_ring[index].word_a;
-        entry.word_b = raw_ring[index].word_b;
-        entry.sequence_low = raw_ring[index].sequence_low;
-        if (entry.sequence_low != (uint16_t)(first_sequence + i)) {
-            count = i;
-            break;
-        }
-        word_a = entry.word_a;
-        word_b = entry.word_b;
+        word_a = raw_word_a[index];
+        word_b = raw_word_b[index];
         if ((word_a & 0x4000U) != 0U && (word_b & 0x4000U) == 0U) {
             uint16_t wt = word_a; word_a = word_b; word_b = wt;
         }

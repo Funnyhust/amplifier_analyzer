@@ -508,3 +508,13 @@ Chưa đạt 200 kSPS continuous. Giới hạn hiện tại không phải do ri�
 - Soak ADC 75 kSPS + DAC update 50 kHz trong 30.003 s: host nhận `2249728` mẫu (`74982.3 SPS`), 4394 frame; CRC/sequence lỗi 0; firmware `PRODUCED=2250550, OVERRUN=0, INVALID=0, OVERWRITE=0`; DAC `TX_ERR=0`.
 - Vin raw `1096..1590`. Async USB giảm `SEND_CYC_MAX` xuống 7032 cycles; `BUILD_CYC_MAX=277777`.
 - App live stream nâng lên 75 kSPS. Đây là checkpoint +10 kSPS thứ ba.
+
+### 15.6 Checkpoint 85 kSPS với DAC 50 kHz
+
+- Ring tăng 1024 lên 2048 mẫu, lưu word A/B thành hai mảng 16-bit aligned và sequence anchor 16-bit theo block 512; khi quá tải drop nguyên block để giữ alignment và host thấy sequence jump.
+- Finite capture tối đa giảm 512 xuống 256 mẫu; CDC RX/TX mặc định giảm 512 xuống 256 byte. Build RAM `18832/20480 = 92.0%`, flash khoảng 86.2%.
+- DMA transfer-complete không còn tạo IRQ: TIM2 tick kế tiếp xác nhận TC, commit mẫu trước rồi start mẫu mới. ADC giảm từ ba xuống hai IRQ/mẫu; nếu DMA chưa xong đúng tick thì `OVERRUN` tăng.
+- DAC SPI1 chạy pipeline: TIM3 hoàn tất/latch frame trước rồi launch frame 16-bit mới, không busy-wait trong ISR; STOP flush frame cuối. Priority cuối: ADC 0, DAC 1, USB 2.
+- Đo waveform ở 85 kSPS: FFT peak `200.062 Hz`, crossing hysteresis `200.01 Hz`, Vin raw `1096..1590`; xác nhận DAC vẫn đúng 200 Hz.
+- Soak ADC 85 kSPS + DAC update 50 kHz trong 30.004 s: host nhận `2549760` mẫu (`84980.1 SPS`), 4980 frame; CRC/sequence lỗi 0; firmware `PRODUCED=2550726, OVERRUN=0, INVALID=0, OVERWRITE=0`; DAC `TX_ERR=0`.
+- App live stream nâng lên 85 kSPS. Đây là checkpoint +10 kSPS thứ tư.

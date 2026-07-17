@@ -28,7 +28,7 @@ static uint16_t last_adc_word_a = 0U;
 static uint16_t last_adc_word_b = 0U;
 
 // Dual ADC buffers and DAC LUT buffers
-#define MAX_ADC_BUF 512
+#define MAX_ADC_BUF 256
 #define MAX_DAC_LUT 256
 /* Register-polling DAC updates run in TIM3 IRQ; leave CPU time for ADC/USB. */
 #define DAC_MAX_ISR_RATE_HZ 50000U
@@ -204,6 +204,7 @@ static void test_controller_dac_stream_stop(void) {
     TIM3->DIER &= ~TIM_DIER_UIE;
     TIM3->CR1 &= ~TIM_CR1_CEN;
     HAL_NVIC_DisableIRQ(TIM3_IRQn);
+    mcp4822_flush_isr();
 #endif
     dac_stream_running = 0U;
     dac_stream_index = 0U;
@@ -260,7 +261,7 @@ static uint8_t test_controller_dac_stream_start(void) {
     dac_stream_index = (dac_lut_size > 1U) ? 1U : 0U;
     dac_stream_running = 1U;
     /* ADC timing is stricter: allow its timer/DMA IRQs to preempt DAC writes. */
-    HAL_NVIC_SetPriority(TIM3_IRQn, 2U, 0U);
+    HAL_NVIC_SetPriority(TIM3_IRQn, 1U, 0U);
     HAL_NVIC_EnableIRQ(TIM3_IRQn);
     TIM3->DIER = TIM_DIER_UIE;
     TIM3->CR1 = TIM_CR1_CEN;

@@ -17,6 +17,7 @@ extern SPI_HandleTypeDef hspi1;
 static volatile uint32_t mcp4822_tx_ok_count = 0U;
 static volatile uint32_t mcp4822_tx_error_count = 0U;
 static volatile uint16_t mcp4822_last_frame = 0U;
+static volatile uint8_t mcp4822_isr_inflight = 0U;
 
 #define MCP4822_FRAME(channel, gain_x2, active, code)                 \
     ((uint16_t)((((channel) == MCP4822_CHANNEL_B) ? 0x8000U : 0U) | \
@@ -68,6 +69,7 @@ void mcp4822_init(void) {
     mcp4822_tx_ok_count = 0U;
     mcp4822_tx_error_count = 0U;
     mcp4822_last_frame = 0U;
+    mcp4822_isr_inflight = 0U;
 }
 
 uint16_t mcp4822_build_frame(uint8_t channel, uint8_t gain_x2, uint16_t code) {
@@ -85,43 +87,59 @@ MCP4822_Status_t mcp4822_write_raw_isr(uint8_t channel, uint8_t gain_x2,
                                         uint16_t code) {
 #if defined(STM32F103xB)
     const uint16_t frame = mcp4822_build_frame(channel, gain_x2, code);
-    volatile uint32_t guard;
     volatile uint16_t discard;
 
     /*
      * The production sample timer can run at 200 kHz, so HAL_SPI_Transmit()
      * is too expensive inside the ISR. SPI1 belongs exclusively to MCP4822;
-     * perform one bounded 16-bit transfer and drain RXNE to avoid OVR.
+     * Complete the previous frame, then launch this 16-bit frame and return.
+     * SPI shifts in hardware while CS stays low until the next DAC tick.
      */
+    if (mcp4822_isr_inflight != 0U) {
+        if ((SPI1->SR & SPI_SR_BSY) != 0U ||
+            (SPI1->SR & SPI_SR_RXNE) == 0U) goto spi_error;
+        discard = (uint16_t)SPI1->DR;
+        (void)discard;
+        MCP4822_CS_PORT->BSRR = MCP4822_CS_PIN;
+        mcp4822_tx_ok_count++;
+        mcp4822_isr_inflight = 0U;
+        __NOP();
+        __NOP();
+    }
+    if ((SPI1->SR & SPI_SR_TXE) == 0U) goto spi_error;
     MCP4822_CS_PORT->BRR = MCP4822_CS_PIN;
-
-    guard = 1000U;
-    while (((SPI1->SR & SPI_SR_TXE) == 0U) && (--guard != 0U)) {}
-    if (guard == 0U) goto spi_error;
     SPI1->DR = frame;
-
-    guard = 1000U;
-    while (((SPI1->SR & SPI_SR_RXNE) == 0U) && (--guard != 0U)) {}
-    if (guard == 0U) goto spi_error;
-    discard = (uint16_t)SPI1->DR;
-    (void)discard;
-
-    guard = 1000U;
-    while (((SPI1->SR & SPI_SR_BSY) != 0U) && (--guard != 0U)) {}
-    if (guard == 0U) goto spi_error;
-
-    MCP4822_CS_PORT->BSRR = MCP4822_CS_PIN;
+    mcp4822_isr_inflight = 1U;
     mcp4822_last_frame = frame;
-    mcp4822_tx_ok_count++;
     return MCP4822_OK;
 
 spi_error:
     MCP4822_CS_PORT->BSRR = MCP4822_CS_PIN;
+    mcp4822_isr_inflight = 0U;
     mcp4822_last_frame = frame;
     mcp4822_tx_error_count++;
     return MCP4822_ERROR;
 #else
     return mcp4822_write_raw(channel, gain_x2, code);
+#endif
+}
+
+void mcp4822_flush_isr(void) {
+#if defined(STM32F103xB)
+    volatile uint32_t guard = 1000U;
+    volatile uint16_t discard;
+
+    if (mcp4822_isr_inflight == 0U) return;
+    while ((SPI1->SR & SPI_SR_BSY) != 0U && --guard != 0U) {}
+    if (guard != 0U && (SPI1->SR & SPI_SR_RXNE) != 0U) {
+        discard = (uint16_t)SPI1->DR;
+        (void)discard;
+        mcp4822_tx_ok_count++;
+    } else {
+        mcp4822_tx_error_count++;
+    }
+    MCP4822_CS_PORT->BSRR = MCP4822_CS_PIN;
+    mcp4822_isr_inflight = 0U;
 #endif
 }
 
