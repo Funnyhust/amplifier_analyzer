@@ -599,3 +599,10 @@ Chưa đạt 200 kSPS continuous. Giới hạn hiện tại không phải do ri�
 - Khi bắt đầu live, app đóng pyserial của GUI để helper sở hữu COM. Khi dừng, helper bị kết thúc, GUI retry mở lại COM tối đa 10 lần cách nhau 100 ms rồi gửi lệnh STOP; do đó có thể đo lại mà không rút USB.
 - Visible-GUI smoke 10 s ở ADC 140 kSPS đạt khoảng 9.45 s dữ liệu sau startup, `warning=0`, `error=''`, worker vẫn chạy. Smoke start/stop/restart tiếp theo: run 1 đạt 4.213 s và run 2 đạt 4.476 s trong hai cửa sổ 5 s; cả hai `ok=True`, sau mỗi lần dừng `serial_open=True`, không cần cắm lại USB.
 - `py_compile signal_analyzer.py stream_reader_process.py` đạt; `python -m unittest test_signal_analysis.py` đạt 4/4.
+
+### 15.17 Dải đo ADC/DUT do user điều khiển độc lập
+
+- Bỏ lựa chọn `AUTO` khỏi app để relay dải đo không tự thay đổi trong lúc đo DUT. Ba lựa chọn app còn lại đều là manual: `0.3 V`, `3.3 V`, `10 V`; mặc định và startup an toàn là `10 V`.
+- Chuyển control dải ADC sang group riêng `Dải đầu vào đo DUT`, có nút `Áp dụng dải ADC` riêng. Nút `Áp dụng cấu hình` của DAC/tần số lấy mẫu và Bode sweep không còn gửi lệnh `SET_RANGE`.
+- Dải user đã áp dụng được lưu trong `app_settings.json`; khi kết nối lại, app khôi phục chính dải manual này trước khi đo. Quy đổi volt CH2 dùng active range firmware trả về, không suy ra từ tần số/biên độ/offset của DAC.
+- Hardware check COM4 xác nhận cả ba lệnh trả lần lượt `MANUAL/0.3V`, `MANUAL/3.3V`, `MANUAL/10V`. Independence check: đặt active `3.3V`, đổi combo pending sang `0.3V`, sau đó áp dụng cấu hình DAC; `GET_RANGE` vẫn là `MANUAL/3.3V`.

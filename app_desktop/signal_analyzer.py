@@ -52,6 +52,7 @@ def configure_serial_driver_buffers(serial_conn):
 DEFAULT_APP_SETTINGS = {
     "language": "vi",
     "theme": "dark",
+    "adc_input_range": "10V",
     "ch1_color": "#FFEB3B",
     "ch2_color": "#00E5FF",
     "show_grid": True,
@@ -85,8 +86,10 @@ VI_TRANSLATIONS = {
     "DAC Gain Bit:": "Hệ số khuếch đại DAC:",
     "Sample Rate Fs:": "Tần số lấy mẫu Fs:",
     "Capture Samples:": "Số mẫu thu:",
+    "DUT Measurement Input Range": "Dải đầu vào đo DUT",
     "ADC Input Range:": "Dải đầu vào ADC:",
     "Active Range:": "Dải đang dùng:",
+    "Apply ADC Range": "Áp dụng dải ADC",
     "Apply Configuration": "Áp dụng cấu hình",
     "Signal Error Analysis": "Phân tích sai số tín hiệu",
     "Signal period:": "Chu kỳ tín hiệu:",
@@ -673,6 +676,8 @@ class SignalAnalyzerApp(QMainWindow):
             settings["language"] = DEFAULT_APP_SETTINGS["language"]
         if settings["theme"] not in ("dark", "light"):
             settings["theme"] = DEFAULT_APP_SETTINGS["theme"]
+        if settings["adc_input_range"] not in ("0.3V", "3.3V", "10V"):
+            settings["adc_input_range"] = DEFAULT_APP_SETTINGS["adc_input_range"]
         return settings
 
     def save_app_settings(self):
@@ -790,13 +795,20 @@ class SignalAnalyzerApp(QMainWindow):
         self.ana_combo_samples.setCurrentIndex(0)
 
         self.ana_combo_range = QComboBox()
-        self.ana_combo_range.addItems([
-            "AUTO",
-            "MANUAL - 0.3 V",
-            "MANUAL - 3.3 V",
-            "MANUAL - 10 V",
-        ])
-        self.lbl_range_status = QLabel("AUTO / 10V (safe startup)")
+        self.ana_combo_range.addItem("0.3 V", "0.3V")
+        self.ana_combo_range.addItem("3.3 V", "3.3V")
+        self.ana_combo_range.addItem("10 V", "10V")
+        selected_range = self.ana_combo_range.findData(
+            self.app_settings["adc_input_range"]
+        )
+        self.ana_combo_range.setCurrentIndex(max(0, selected_range))
+        self.lbl_range_status = QLabel(
+            f"MANUAL / {self.ana_combo_range.currentData()}"
+        )
+        self.btn_apply_range = QPushButton("Apply ADC Range")
+        self.btn_apply_range.clicked.connect(
+            lambda: self.apply_range_config(show_message=True)
+        )
         
         config_layout.addRow("Waveform Type:", self.ana_combo_wave)
         config_layout.addRow("TX Frequency:", self.ana_spin_freq)
@@ -805,8 +817,6 @@ class SignalAnalyzerApp(QMainWindow):
         config_layout.addRow("DAC Gain Bit:", self.ana_combo_gain)
         config_layout.addRow("Sample Rate Fs:", self.ana_spin_fs)
         config_layout.addRow("Capture Samples:", self.ana_combo_samples)
-        config_layout.addRow("ADC Input Range:", self.ana_combo_range)
-        config_layout.addRow("Active Range:", self.lbl_range_status)
         
         self.btn_ana_apply = QPushButton("Apply Configuration")
         self.btn_ana_apply.clicked.connect(
@@ -816,6 +826,13 @@ class SignalAnalyzerApp(QMainWindow):
         config_layout.addRow(self.btn_ana_apply)
         config_group.setLayout(config_layout)
         ana_layout.addWidget(config_group)
+
+        range_group = QGroupBox("DUT Measurement Input Range")
+        range_layout = QFormLayout(range_group)
+        range_layout.addRow("ADC Input Range:", self.ana_combo_range)
+        range_layout.addRow("Active Range:", self.lbl_range_status)
+        range_layout.addRow(self.btn_apply_range)
+        ana_layout.addWidget(range_group)
         
         # ERROR ESTIMATES PANEL
         err_group = QGroupBox("Signal Error Analysis")
@@ -1261,16 +1278,6 @@ class SignalAnalyzerApp(QMainWindow):
                 )
             return False
 
-        if not self.apply_range_config():
-            if show_message:
-                QMessageBox.critical(
-                    self,
-                    self.tr("Error"),
-                    f"{self.tr('Failed to configure the ADC input range.')}\n"
-                    f"Device response: {self.last_command_response}",
-                )
-            return False
-        
         cmd = f"CONFIG:WAVE={wave_str},FREQ={freq},AMP_MV={amp_mv},OFFSET_MV={offset_mv},DAC_GAIN={dac_gain},FS={fs},SAMPLES={samples}\n"
         if self.serial_send_cmd(cmd):
             if show_message:
@@ -1285,20 +1292,33 @@ class SignalAnalyzerApp(QMainWindow):
             )
         return False
 
-    def apply_range_config(self):
-        if not self.serial_conn or not self.serial_conn.is_open:
-            return True
-
-        commands = [
-            "SET_RANGE:AUTO\n",
-            "SET_RANGE:0.3V\n",
-            "SET_RANGE:3.3V\n",
-            "SET_RANGE:10V\n",
-        ]
-        if not self.serial_send_cmd(commands[self.ana_combo_range.currentIndex()]):
+    def apply_range_config(self, show_message=False):
+        selected_range = self.ana_combo_range.currentData()
+        if selected_range not in ("0.3V", "3.3V", "10V"):
             return False
 
-        self.refresh_range_status()
+        if self.serial_conn and self.serial_conn.is_open:
+            if not self.serial_send_cmd(f"SET_RANGE:{selected_range}\n"):
+                if show_message:
+                    QMessageBox.critical(
+                        self,
+                        self.tr("Error"),
+                        f"{self.tr('Failed to configure the ADC input range.')}\n"
+                        f"Device response: {self.last_command_response}",
+                    )
+                return False
+            self.refresh_range_status()
+        else:
+            self.lbl_range_status.setText(f"MANUAL / {selected_range}")
+
+        self.app_settings["adc_input_range"] = selected_range
+        self.save_app_settings()
+        if show_message:
+            QMessageBox.information(
+                self,
+                self.tr("Success"),
+                f"ADC/DUT input range: {selected_range}",
+            )
         return True
 
     def refresh_range_status(self):
@@ -1430,7 +1450,9 @@ class SignalAnalyzerApp(QMainWindow):
                     self.lbl_conn_status.setStyleSheet("color: #4CAF50; font-weight: bold;")
                     self.btn_connect.setText(self.tr("Disconnect"))
                     self.btn_connect.setStyleSheet("background-color: #F44336; color: white; font-weight: bold;")
-                    self.refresh_range_status()
+                    # Restore the user's manual DUT input range independently
+                    # from every DAC stimulus setting.
+                    self.apply_range_config(show_message=False)
                 else:
                     self.serial_conn.close()
                     self.serial_conn = None
@@ -1605,6 +1627,9 @@ class SignalAnalyzerApp(QMainWindow):
             widget.blockSignals(True)
         self.combo_language.setCurrentIndex(self.combo_language.findData(self.language))
         self.combo_theme.setCurrentIndex(self.combo_theme.findData(self.app_settings["theme"]))
+        self.ana_combo_range.setCurrentIndex(
+            self.ana_combo_range.findData(self.app_settings["adc_input_range"])
+        )
         self.chk_show_grid.setChecked(self.app_settings["show_grid"])
         self.chk_auto_scale.setChecked(self.app_settings["auto_scale"])
         self.spin_line_width.setValue(self.app_settings["line_width"])
@@ -2139,9 +2164,6 @@ class SignalAnalyzerApp(QMainWindow):
     # --- SWEEP BODE ---
     def run_sweep(self):
         self.view_tabs.setCurrentIndex(1) 
-        if self.serial_conn and self.serial_conn.is_open and not self.apply_range_config():
-            QMessageBox.critical(self, self.tr("Error"), self.tr("Failed to configure the ADC input range."))
-            return
         self.btn_sweep.setEnabled(False)
         self.worker = SweepWorker(
             self,

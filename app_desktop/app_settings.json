@@ -1,6 +1,7 @@
 {
   "language": "vi",
   "theme": "light",
+  "adc_input_range": "10V",
   "ch1_color": "#FFEB3B",
   "ch2_color": "#00E5FF",
   "show_grid": true,
