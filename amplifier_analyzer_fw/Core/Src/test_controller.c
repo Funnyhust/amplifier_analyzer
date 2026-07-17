@@ -259,8 +259,8 @@ static uint8_t test_controller_dac_stream_start(void) {
 
     dac_stream_index = (dac_lut_size > 1U) ? 1U : 0U;
     dac_stream_running = 1U;
-    /* At the qualified <=50 kHz rate, preserve DAC timing ahead of USB. */
-    HAL_NVIC_SetPriority(TIM3_IRQn, 0U, 0U);
+    /* ADC timing is stricter: allow its timer/DMA IRQs to preempt DAC writes. */
+    HAL_NVIC_SetPriority(TIM3_IRQn, 2U, 0U);
     HAL_NVIC_EnableIRQ(TIM3_IRQn);
     TIM3->DIER = TIM_DIER_UIE;
     TIM3->CR1 = TIM_CR1_CEN;

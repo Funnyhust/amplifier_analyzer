@@ -481,3 +481,12 @@ J-Link đã kết nối lại và production refactor đã được nạp/test t
 Build cuối: RAM `16224/20480 = 79.2%`, flash khoảng `55900/65536 = 85.3%`.
 
 Chưa đạt 200 kSPS continuous. Giới hạn hiện tại không phải do riêng core 72 MHz hoặc riêng SPI: kiến trúc còn TIM2 IRQ + hai DMA-complete IRQ cho mỗi cặp ADC, đồng thời TIM3 ISR polling SPI1 tới 50 kHz. Muốn tiến gần 200 kSPS phải thay đường ADC bằng timer-generated RD/CONVST và circular/double-buffer DMA (IRQ theo nửa/full buffer), đồng thời chuyển DAC sang SPI1 DMA/timer trigger hoặc giảm update IRQ; sau đó mới tăng SPI2 và benchmark lại. Tăng ring tiếp chỉ kéo dài thời gian trước overwrite, không sửa throughput trung bình.
+
+### 15.3 Checkpoint 55 kSPS với DAC 50 kHz
+
+- SPI2 tăng từ 9 lên 18 MHz và đạt lại `2000/2000` lệnh `ADC_READ_ONCE` strict-valid.
+- IRQ priority tách thành ADC TIM2/DMA = 0, USB = 1, DAC TIM3 = 2 để USB không bị DAC polling làm starvation.
+- Một cặp ADC dùng một RX DMA 4 byte; half-transfer chỉ pulse RD/CONVST và rearm TX 2 byte cho word B, transfer-complete mới ghi raw ring. Không còn tháo/lắp lại toàn bộ RX DMA giữa word A/B.
+- Soak ADC 55 kSPS + DAC sine 200 Hz/update 50 kHz trong 30.004 s: host nhận `1650176` mẫu (`54998.4 SPS`), 6446 frame; CRC/sequence lỗi 0; firmware `PRODUCED=1650392, OVERRUN=0, INVALID=0, OVERWRITE=0`; DAC `TX_ERR=0`.
+- Vin raw `1096..1591`, vẫn đúng sine analog khoảng 0.6 Vpp.
+- App live stream nâng lên 55 kSPS. Đây là checkpoint +10 kSPS đầu tiên sau commit 45 kSPS.

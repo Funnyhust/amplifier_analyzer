@@ -30,7 +30,7 @@ void HAL_PCD_MspInit(PCD_HandleTypeDef* pcdHandle)
 
     /* Peripheral interrupt init */
     /* DMA/timer sampling is priority 0; USB runs in the remaining margin. */
-    HAL_NVIC_SetPriority(USB_LP_CAN1_RX0_IRQn, 2, 0);
+    HAL_NVIC_SetPriority(USB_LP_CAN1_RX0_IRQn, 1, 0);
     HAL_NVIC_EnableIRQ(USB_LP_CAN1_RX0_IRQn);
   }
 }

@@ -419,8 +419,8 @@ static void MX_SPI2_Init(void)
   /* ADS7861 serial data is valid on the falling clock edge. */
   hspi2.Init.CLKPhase = SPI_PHASE_2EDGE;
   hspi2.Init.NSS = SPI_NSS_SOFT;
-  /* Stage-3 streaming qualification: APB1=36 MHz, /4 = 9 MHz. */
-  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
+  /* APB1=36 MHz, /2 = 18 MHz. Qualified by strict ADS7861 frame stress. */
+  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
   hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;

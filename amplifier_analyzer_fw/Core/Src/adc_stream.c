@@ -16,9 +16,8 @@ typedef struct {
 static ads7861_t *stream_dev;
 static volatile uint8_t stream_running;
 static volatile uint8_t dma_word_state;
-static volatile uint8_t dma_rx[2];
+static volatile uint8_t dma_rx[4];
 static uint8_t dma_dummy;
-static volatile uint16_t first_word;
 static volatile adc_stream_raw_entry_t raw_ring[ADC_STREAM_RING_SIZE];
 static volatile uint32_t ring_write_count;
 static volatile uint32_t ring_read_count;
@@ -42,7 +41,7 @@ static inline void adc_stream_pulse_convst(void)
     __NOP();
 }
 
-static void adc_stream_dma_begin_word(void)
+static void adc_stream_dma_begin_pair(void)
 {
     DMA1_Channel4->CCR &= ~DMA_CCR_EN;
     DMA1_Channel5->CCR &= ~DMA_CCR_EN;
@@ -51,12 +50,15 @@ static void adc_stream_dma_begin_word(void)
 
     dma_rx[0] = 0U;
     dma_rx[1] = 0U;
+    dma_rx[2] = 0U;
+    dma_rx[3] = 0U;
     dma_dummy = 0U;
 
     DMA1_Channel4->CPAR = (uint32_t)&SPI2->DR;
     DMA1_Channel4->CMAR = (uint32_t)dma_rx;
-    DMA1_Channel4->CNDTR = 2U;
-    DMA1_Channel4->CCR = DMA_CCR_MINC | DMA_CCR_TCIE | DMA_CCR_PL_1;
+    DMA1_Channel4->CNDTR = 4U;
+    DMA1_Channel4->CCR = DMA_CCR_MINC | DMA_CCR_HTIE | DMA_CCR_TCIE |
+                         DMA_CCR_PL_1;
 
     DMA1_Channel5->CPAR = (uint32_t)&SPI2->DR;
     DMA1_Channel5->CMAR = (uint32_t)&dma_dummy;
@@ -216,16 +218,30 @@ void adc_stream_timer_irq(void)
     stream_dev->cs_port->BRR = stream_dev->cs_pin;
     adc_stream_pulse_convst();
     dma_word_state = 1U;
-    adc_stream_dma_begin_word();
+    adc_stream_dma_begin_pair();
 }
 
 void adc_stream_dma_irq(void)
 {
-    uint16_t word;
+    uint16_t word_a;
+    uint16_t word_b;
     uint32_t guard = 1000U;
 
+    if ((DMA1->ISR & DMA_ISR_HTIF4) != 0U && dma_word_state == 1U) {
+        /* RX remains armed for all four bytes. Pause SCK after word A by
+         * rearming only the two-byte TX DMA, then expose word B. */
+        DMA1->IFCR = DMA_IFCR_CHTIF4 | DMA_IFCR_CGIF5;
+        DMA1_Channel5->CCR &= ~DMA_CCR_EN;
+        stream_dev->convst_port->BRR = stream_dev->convst_pin;
+        adc_stream_pulse_convst();
+        dma_word_state = 2U;
+        DMA1_Channel5->CNDTR = 2U;
+        DMA1_Channel5->CCR |= DMA_CCR_EN;
+        return;
+    }
+
     if ((DMA1->ISR & DMA_ISR_TCIF4) == 0U) {
-        DMA1->IFCR = DMA_IFCR_CGIF4;
+        DMA1->IFCR = DMA_IFCR_CGIF4 | DMA_IFCR_CGIF5;
         return;
     }
     DMA1->IFCR = DMA_IFCR_CGIF4 | DMA_IFCR_CGIF5;
@@ -234,16 +250,9 @@ void adc_stream_dma_irq(void)
     SPI2->CR2 &= ~(SPI_CR2_RXDMAEN | SPI_CR2_TXDMAEN);
     while ((SPI2->SR & SPI_SR_BSY) != 0U && --guard != 0U) {}
 
-    word = (uint16_t)((((uint16_t)dma_rx[0] << 8) | dma_rx[1]) << 1);
+    word_a = (uint16_t)((((uint16_t)dma_rx[0] << 8) | dma_rx[1]) << 1);
+    word_b = (uint16_t)((((uint16_t)dma_rx[2] << 8) | dma_rx[3]) << 1);
     stream_dev->convst_port->BRR = stream_dev->convst_pin;
-
-    if (dma_word_state == 1U) {
-        first_word = word;
-        adc_stream_pulse_convst();
-        dma_word_state = 2U;
-        adc_stream_dma_begin_word();
-        return;
-    }
 
     if (dma_word_state == 2U) {
         uint32_t write_index = ring_write_count &
@@ -252,8 +261,8 @@ void adc_stream_dma_irq(void)
             ring_read_count++;
             stream_stats.ring_overwrite++;
         }
-        raw_ring[write_index].word_a = first_word;
-        raw_ring[write_index].word_b = word;
+        raw_ring[write_index].word_a = word_a;
+        raw_ring[write_index].word_b = word_b;
         raw_ring[write_index].sequence_low =
             (uint16_t)active_sample_sequence;
         ring_write_count++;
