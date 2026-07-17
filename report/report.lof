@@ -1,10 +1,21 @@
 \addvspace {10\p@ }
 \addvspace {10\p@ }
 \addvspace {10\p@ }
-\contentsline {figure}{\numberline {3.1}{\ignorespaces Kiến trúc tổng thể của hệ thống phân tích tín hiệu}}{6}{figure.caption.9}%
+\contentsline {figure}{\numberline {3.1}{\ignorespaces Kiến trúc tổng thể của hệ thống theo sơ đồ khối thiết kế}}{7}{figure.caption.9}%
+\contentsline {figure}{\numberline {3.2}{\ignorespaces Mô hình bố trí PCB của thiết bị phân tích}}{9}{figure.caption.11}%
+\contentsline {figure}{\numberline {3.3}{\ignorespaces Layout các lớp đồng, via và vùng đổ đồng của PCB}}{10}{figure.caption.12}%
+\contentsline {figure}{\numberline {3.4}{\ignorespaces Bo mạch nguyên mẫu đã lắp ráp trong quá trình debug}}{11}{figure.caption.13}%
 \addvspace {10\p@ }
 \addvspace {10\p@ }
-\contentsline {figure}{\numberline {5.1}{\ignorespaces Giao diện waveform và phân tích điều kiện lấy mẫu}}{12}{figure.caption.14}%
-\contentsline {figure}{\numberline {5.2}{\ignorespaces Bảng thông số từng kênh và phân tích DUT}}{14}{figure.caption.15}%
+\contentsline {figure}{\numberline {5.1}{\ignorespaces Giao diện waveform khi đo phần cứng thật tại $100\,\mathrm {Hz}$}}{15}{figure.caption.17}%
+\contentsline {figure}{\numberline {5.2}{\ignorespaces Bảng thông số từng kênh và phân tích DUT từ phép đo phần cứng thật}}{17}{figure.caption.18}%
 \addvspace {10\p@ }
+\contentsline {figure}{\numberline {6.1}{\ignorespaces Module DUT sử dụng trong quá trình thử nghiệm phần cứng}}{19}{figure.caption.19}%
+\contentsline {figure}{\numberline {6.2}{\ignorespaces Đo đồng thời đầu ra DAC (màu vàng) và đầu ra DUT (màu tím) tại $200\,\mathrm {Hz}$}}{19}{figure.caption.20}%
+\contentsline {figure}{\numberline {6.3}{\ignorespaces Kết quả thực tế tại $100\,\mathrm {Hz}$: waveform (trên) và bảng thông số do ứng dụng tính toán (dưới)}}{22}{figure.caption.24}%
+\contentsline {figure}{\numberline {6.4}{\ignorespaces Kết quả thực tế tại $5\,\mathrm {kHz}$: waveform (trên) và bảng thông số (dưới)}}{23}{figure.caption.25}%
+\contentsline {figure}{\numberline {6.5}{\ignorespaces Kết quả thực tế tại $20\,\mathrm {kHz}$: waveform (trên) và bảng thông số (dưới)}}{24}{figure.caption.26}%
+\contentsline {figure}{\numberline {6.6}{\ignorespaces Tín hiệu $1{,}65\pm 1\,\mathrm {V}$, dải $10\,\mathrm {V}$: phần waveform bị clipping và bảng kết quả FAIL}}{25}{figure.caption.27}%
+\contentsline {figure}{\numberline {6.7}{\ignorespaces Tín hiệu nhỏ $0{,}15\pm 0{,}05\,\mathrm {V}$, dải $0{,}3\,\mathrm {V}$: giới hạn tỷ số tín hiệu trên nhiễu}}{26}{figure.caption.28}%
+\contentsline {figure}{\numberline {6.8}{\ignorespaces Tín hiệu $0{,}5\pm 0{,}5\,\mathrm {V}$, dải $3{,}3\,\mathrm {V}$: bão hòa ADC và kết quả FAIL tương ứng}}{27}{figure.caption.29}%
 \addvspace {10\p@ }

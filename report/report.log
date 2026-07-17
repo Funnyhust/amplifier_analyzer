@@ -1,4 +1,4 @@
-This is XeTeX, Version 3.141592653-2.6-0.999997 (MiKTeX 25.12) (preloaded format=xelatex 2026.7.14)  17 JUL 2026 10:01
+This is XeTeX, Version 3.141592653-2.6-0.999997 (MiKTeX 25.12) (preloaded format=xelatex 2026.7.14)  17 JUL 2026 22:49
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -1014,72 +1014,192 @@ Chapter 2.
 
 ] [4] [5]
 Chapter 3.
+File: images/Sơ đồ khối/image.png Graphic file (type bmp)
+<images/Sơ đồ khối/image.png>
 [6
 
 ] [7] [8]
+File: images/product/layout.png Graphic file (type bmp)
+<images/product/layout.png>
+File: images/product/layout2.png Graphic file (type bmp)
+<images/product/layout2.png>
+File: images/product/layout3.png Graphic file (type bmp)
+<images/product/layout3.png>
+ [9]
+File: images/product/product.png Graphic file (type bmp)
+<images/product/product.png>
+ [10] [11]
 Chapter 4.
-[9
+[12
 
-] [10]
-Underfull \hbox (badness 10000) in paragraph at lines 422--423
+] [13]
+Underfull \hbox (badness 10000) in paragraph at lines 441--442
 []\TU/TimesNewRoman(0)/m/n/12 PlatformIO định nghĩa các environment \TU/lmtt/m/
 n/12 production\TU/TimesNewRoman(0)/m/n/12 , \TU/lmtt/m/n/12 usb_cdc_test \TU/T
 imesNewRoman(0)/m/n/12 và
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 432--432
+Underfull \hbox (badness 10000) in paragraph at lines 451--451
 []|\TU/TimesNewRoman(0)/m/n/12 Production
  []
 
-[11]
+[14]
 Chapter 5.
-File: images/app_waveform_current.png Graphic file (type bmp)
-<images/app_waveform_current.png>
-[12
+File: images/result_app/01_freq_100hz_waveform.png Graphic file (type bmp)
+<images/result_app/01_freq_100hz_waveform.png>
+[15
+
+] [16]
+File: images/result_app/01_freq_100hz_results.png Graphic file (type bmp)
+<images/result_app/01_freq_100hz_results.png>
+ [17]
+Chapter 6.
+File: images/DUT/simulate.png Graphic file (type bmp)
+<images/DUT/simulate.png>
+File: images/DUT/product.png Graphic file (type bmp)
+<images/DUT/product.png>
+[18
 
 ]
-File: images/app_measurements_current.png Graphic file (type bmp)
-<images/app_measurements_current.png>
- [13] [14]
-Chapter 6.
-
-Underfull \hbox (badness 10000) in paragraph at lines 509--509
+File: images/oscillo/image.png Graphic file (type bmp)
+<images/oscillo/image.png>
+ [19]
+Underfull \hbox (badness 10000) in paragraph at lines 574--574
 []|\TU/TimesNewRoman(0)/m/n/12 20/20 chu kỳ STOP–RANGE–CONFIG–
  []
 
-[15
-
-] [16] [17] [18]
+[20]
+File: images/result_app/01_freq_100hz_waveform.png Graphic file (type bmp)
+<images/result_app/01_freq_100hz_waveform.png>
+File: images/result_app/01_freq_100hz_results.png Graphic file (type bmp)
+<images/result_app/01_freq_100hz_results.png>
+ [21]
+File: images/result_app/03_freq_5000hz_waveform.png Graphic file (type bmp)
+<images/result_app/03_freq_5000hz_waveform.png>
+File: images/result_app/03_freq_5000hz_results.png Graphic file (type bmp)
+<images/result_app/03_freq_5000hz_results.png>
+ [22]
+File: images/result_app/05_freq_20000hz_waveform.png Graphic file (type bmp)
+<images/result_app/05_freq_20000hz_waveform.png>
+File: images/result_app/05_freq_20000hz_results.png Graphic file (type bmp)
+<images/result_app/05_freq_20000hz_results.png>
+ [23]
+File: images/result_app/06_amp_1p65_pm1_range10_waveform.png Graphic file (type
+ bmp)
+<images/result_app/06_amp_1p65_pm1_range10_waveform.png>
+File: images/result_app/06_amp_1p65_pm1_range10_results.png Graphic file (type 
+bmp)
+<images/result_app/06_amp_1p65_pm1_range10_results.png>
+ [24]
+File: images/result_app/08_amp_0p15_pm0p05_range0p3_waveform.png Graphic file (
+type bmp)
+<images/result_app/08_amp_0p15_pm0p05_range0p3_waveform.png>
+File: images/result_app/08_amp_0p15_pm0p05_range0p3_results.png Graphic file (t
+ype bmp)
+<images/result_app/08_amp_0p15_pm0p05_range0p3_results.png>
+ [25]
+File: images/result_app/09_amp_0p5_pm0p5_range3p3_waveform.png Graphic file (ty
+pe bmp)
+<images/result_app/09_amp_0p5_pm0p5_range3p3_waveform.png>
+File: images/result_app/09_amp_0p5_pm0p5_range3p3_results.png Graphic file (typ
+e bmp)
+<images/result_app/09_amp_0p5_pm0p5_range3p3_results.png>
+ [26] [27] [28] [29]
 Chapter 7.
-[19
+[30
 
-] [20]
-Underfull \hbox (badness 10000) in paragraph at lines 616--617
+]
+Underfull \hbox (badness 10000) in paragraph at lines 763--763
+[]|\TU/TimesNewRoman(0)/m/n/10 Cortex-M3,
+ []
+
+
+Underfull \hbox (badness 4967) in paragraph at lines 763--763
+[]|\TU/TimesNewRoman(0)/m/n/10 USB FS De-
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 763--763
+[]|\TU/TimesNewRoman(0)/m/n/10 Đủ cho
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 763--763
+\TU/TimesNewRoman(0)/m/n/10 nguyên
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 763--763
+\TU/TimesNewRoman(0)/m/n/10 mẫu hiện
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 763--763
+[]|\TU/TimesNewRoman(0)/m/n/10 Cortex-M4,
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 763--763
+[]|\TU/TimesNewRoman(0)/m/n/10 Nâng cấp
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 763--763
+\TU/TimesNewRoman(0)/m/n/10 kinh tế,
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 763--763
+[]|\TU/TimesNewRoman(0)/m/n/10 Cortex-M7,
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 763--763
+[]|\TU/TimesNewRoman(0)/m/n/10 USB OTG
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 763--763
+[]|\TU/TimesNewRoman(0)/m/n/10 Phù hợp
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 763--763
+\TU/TimesNewRoman(0)/m/n/10 cho phiên
+ []
+
+
+Underfull \hbox (badness 1460) in paragraph at lines 763--763
+\TU/TimesNewRoman(0)/m/n/10 bản đo tốc
+ []
+
+[31] [32]
+Underfull \hbox (badness 10000) in paragraph at lines 787--788
 []\TU/TimesNewRoman(0)/m/n/12 STMicroelectronics, \TU/TimesNewRoman(0)/m/it/12 
 RM0008: STM32F101xx, STM32F102xx, STM32F103xx,
  []
 
 
-Underfull \hbox (badness 2221) in paragraph at lines 617--618
+Underfull \hbox (badness 2221) in paragraph at lines 790--791
 []\TU/TimesNewRoman(0)/m/n/12 Microchip Technology Inc., \TU/TimesNewRoman(0)/m
 /it/12 MCP4802/4812/4822: 8/10/12-Bit Dual Voltage Out-
  []
 
 
-Underfull \hbox (badness 1558) in paragraph at lines 617--618
+Underfull \hbox (badness 1558) in paragraph at lines 790--791
 \TU/TimesNewRoman(0)/m/it/12 put Digital-to-Analog Converter with Internal VREF
  and SPI Interface\TU/TimesNewRoman(0)/m/n/12 , Datasheet
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 625--626
+Underfull \hbox (badness 10000) in paragraph at lines 798--799
 []\TU/TimesNewRoman(0)/m/n/12 C. Liechti, \TU/TimesNewRoman(0)/m/it/12 pySerial
  Documentation\TU/TimesNewRoman(0)/m/n/12 . [Online]. Available: [][]$[][][][][
 ] [] [] [] [][][][][][][][] []
  []
 
-[21
+[33
 
 ] (report.aux)
  ***********
@@ -1087,15 +1207,15 @@ LaTeX2e <2025-11-01>
 L3 programming layer <2025-12-24>
  ***********
 Package rerunfilecheck Info: File `report.out' has not changed.
-(rerunfilecheck)             Checksum: 43DD31FB323E4994CED50342A0677AD8;10724.
+(rerunfilecheck)             Checksum: A3E3745F0F206CC6BD60577BC2BE674A;12434.
  ) 
 Here is how much of TeX's memory you used:
- 26108 strings out of 402987
- 524473 string characters out of 5448110
- 988869 words of memory out of 5000000
- 54428 multiletter control sequences out of 15000+600000
- 635549 words of font info for 98 fonts, out of 8000000 for 9000
+ 26220 strings out of 402987
+ 530808 string characters out of 5448110
+ 992268 words of memory out of 5000000
+ 54515 multiletter control sequences out of 15000+600000
+ 636218 words of font info for 104 fonts, out of 8000000 for 9000
  1348 hyphenation exceptions out of 8191
- 84i,14n,104p,827b,823s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 84i,14n,104p,832b,453s stack positions out of 10000i,1000n,20000p,200000b,200000s
 
-Output written on report.pdf (29 pages).
+Output written on report.pdf (41 pages).

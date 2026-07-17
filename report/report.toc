@@ -17,34 +17,40 @@
 \contentsline {section}{\numberline {3.1}Yêu cầu kỹ thuật}{6}{section.3.1}%
 \contentsline {section}{\numberline {3.2}Kiến trúc tổng thể}{6}{section.3.2}%
 \contentsline {section}{\numberline {3.3}Thiết kế khối phát tín hiệu}{7}{section.3.3}%
-\contentsline {section}{\numberline {3.4}Thiết kế khối thu tín hiệu hai kênh}{7}{section.3.4}%
+\contentsline {section}{\numberline {3.4}Thiết kế khối thu tín hiệu hai kênh}{8}{section.3.4}%
 \contentsline {section}{\numberline {3.5}Mạch điều hòa và lựa chọn range}{8}{section.3.5}%
 \contentsline {section}{\numberline {3.6}Nguồn, kết nối và phân bổ chân}{8}{section.3.6}%
-\contentsline {chapter}{\numberline {4}THIẾT KẾ FIRMWARE VÀ GIAO THỨC TRUYỀN THÔNG}{9}{chapter.4}%
-\contentsline {section}{\numberline {4.1}Kiến trúc firmware STM32F103}{9}{section.4.1}%
-\contentsline {section}{\numberline {4.2}Điều khiển MCP4822 và ADS7861}{9}{section.4.2}%
-\contentsline {section}{\numberline {4.3}Thu thập, xử lý kết quả và calibration}{9}{section.4.3}%
-\contentsline {section}{\numberline {4.4}USB CDC và giao thức lệnh}{10}{section.4.4}%
-\contentsline {section}{\numberline {4.5}Giao thức truyền dữ liệu nhị phân}{11}{section.4.5}%
-\contentsline {section}{\numberline {4.6}Tài nguyên và các chế độ kiểm thử}{11}{section.4.6}%
-\contentsline {chapter}{\numberline {5}THIẾT KẾ ỨNG DỤNG DESKTOP VÀ XỬ LÝ TÍN HIỆU}{12}{chapter.5}%
-\contentsline {section}{\numberline {5.1}Kiến trúc ứng dụng Signal Analyzer Pro}{12}{section.5.1}%
-\contentsline {section}{\numberline {5.2}Giao diện và luồng giao tiếp USB}{12}{section.5.2}%
-\contentsline {section}{\numberline {5.3}Phân tích điều kiện lấy mẫu và sai số DAC}{13}{section.5.3}%
-\contentsline {section}{\numberline {5.4}Phân tích tín hiệu CH1 và CH2}{13}{section.5.4}%
-\contentsline {section}{\numberline {5.5}Phân tích DUT và PASS/FAIL/WARNING}{13}{section.5.5}%
-\contentsline {section}{\numberline {5.6}Calibration, simulation và xuất dữ liệu}{14}{section.5.6}%
-\contentsline {chapter}{\numberline {6}KIỂM NGHIỆM, KẾT QUẢ VÀ THẢO LUẬN}{15}{chapter.6}%
-\contentsline {section}{\numberline {6.1}Cấu hình và phương pháp kiểm nghiệm}{15}{section.6.1}%
-\contentsline {section}{\numberline {6.2}Kiểm nghiệm USB CDC}{15}{section.6.2}%
-\contentsline {section}{\numberline {6.3}Kiểm nghiệm điều kiện lấy mẫu}{15}{section.6.3}%
-\contentsline {section}{\numberline {6.4}Kiểm nghiệm thuật toán đo}{16}{section.6.4}%
-\contentsline {section}{\numberline {6.5}Kiểm nghiệm quét Bode}{17}{section.6.5}%
-\contentsline {section}{\numberline {6.6}Phân tích sai số}{17}{section.6.6}%
-\contentsline {section}{\numberline {6.7}Thảo luận}{18}{section.6.7}%
-\contentsline {chapter}{\numberline {7}KẾT LUẬN VÀ HƯỚNG PHÁT TRIỂN}{19}{chapter.7}%
-\contentsline {section}{\numberline {7.1}Kết luận}{19}{section.7.1}%
-\contentsline {section}{\numberline {7.2}Đánh giá mức độ hoàn thành}{19}{section.7.2}%
-\contentsline {section}{\numberline {7.3}Hạn chế của hệ thống}{19}{section.7.3}%
-\contentsline {section}{\numberline {7.4}Hướng phát triển}{20}{section.7.4}%
-\contentsline {chapter}{TÀI LIỆU THAM KHẢO}{20}{section.7.4}%
+\contentsline {section}{\numberline {3.7}PCB và nguyên mẫu phần cứng}{9}{section.3.7}%
+\contentsline {chapter}{\numberline {4}THIẾT KẾ FIRMWARE VÀ GIAO THỨC TRUYỀN THÔNG}{12}{chapter.4}%
+\contentsline {section}{\numberline {4.1}Kiến trúc firmware STM32F103}{12}{section.4.1}%
+\contentsline {section}{\numberline {4.2}Điều khiển MCP4822 và ADS7861}{12}{section.4.2}%
+\contentsline {section}{\numberline {4.3}Thu thập, xử lý kết quả và calibration}{12}{section.4.3}%
+\contentsline {section}{\numberline {4.4}USB CDC và giao thức lệnh}{13}{section.4.4}%
+\contentsline {section}{\numberline {4.5}Giao thức truyền dữ liệu nhị phân}{13}{section.4.5}%
+\contentsline {section}{\numberline {4.6}Tài nguyên và các chế độ kiểm thử}{14}{section.4.6}%
+\contentsline {chapter}{\numberline {5}THIẾT KẾ ỨNG DỤNG DESKTOP VÀ XỬ LÝ TÍN HIỆU}{15}{chapter.5}%
+\contentsline {section}{\numberline {5.1}Kiến trúc ứng dụng Signal Analyzer Pro}{15}{section.5.1}%
+\contentsline {section}{\numberline {5.2}Giao diện và luồng giao tiếp USB}{16}{section.5.2}%
+\contentsline {section}{\numberline {5.3}Phân tích điều kiện lấy mẫu và sai số DAC}{16}{section.5.3}%
+\contentsline {section}{\numberline {5.4}Phân tích tín hiệu CH1 và CH2}{16}{section.5.4}%
+\contentsline {section}{\numberline {5.5}Phân tích DUT và PASS/FAIL/WARNING}{16}{section.5.5}%
+\contentsline {section}{\numberline {5.6}Calibration, simulation và xuất dữ liệu}{17}{section.5.6}%
+\contentsline {chapter}{\numberline {6}KIỂM NGHIỆM, KẾT QUẢ VÀ THẢO LUẬN}{18}{chapter.6}%
+\contentsline {section}{\numberline {6.1}Cấu hình và phương pháp kiểm nghiệm}{18}{section.6.1}%
+\contentsline {subsection}{\numberline {6.1.1}Module DUT thử nghiệm}{18}{subsection.6.1.1}%
+\contentsline {subsection}{\numberline {6.1.2}Xác nhận chuỗi DAC--DUT bằng oscilloscope}{19}{subsection.6.1.2}%
+\contentsline {section}{\numberline {6.2}Kiểm nghiệm USB CDC}{20}{section.6.2}%
+\contentsline {section}{\numberline {6.3}Kiểm nghiệm điều kiện lấy mẫu}{20}{section.6.3}%
+\contentsline {section}{\numberline {6.4}Kết quả quét tần số trên phần cứng thật}{21}{section.6.4}%
+\contentsline {section}{\numberline {6.5}Kết quả thay đổi biên độ và dải đo}{24}{section.6.5}%
+\contentsline {section}{\numberline {6.6}Kiểm nghiệm thuật toán đo}{27}{section.6.6}%
+\contentsline {section}{\numberline {6.7}Kiểm nghiệm quét Bode}{28}{section.6.7}%
+\contentsline {section}{\numberline {6.8}Phân tích sai số}{28}{section.6.8}%
+\contentsline {section}{\numberline {6.9}Thảo luận}{29}{section.6.9}%
+\contentsline {chapter}{\numberline {7}KẾT LUẬN VÀ HƯỚNG PHÁT TRIỂN}{30}{chapter.7}%
+\contentsline {section}{\numberline {7.1}Kết luận}{30}{section.7.1}%
+\contentsline {section}{\numberline {7.2}Đánh giá mức độ hoàn thành}{30}{section.7.2}%
+\contentsline {section}{\numberline {7.3}Hạn chế của hệ thống}{30}{section.7.3}%
+\contentsline {section}{\numberline {7.4}Hướng phát triển}{31}{section.7.4}%
+\contentsline {subsection}{\numberline {7.4.1}Nâng cấp nền tảng xử lý để hướng tới sai số 1\% tại 20 kHz}{31}{subsection.7.4.1}%
+\contentsline {chapter}{TÀI LIỆU THAM KHẢO}{32}{table.caption.31}%

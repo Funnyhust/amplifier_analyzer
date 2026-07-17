@@ -2,14 +2,16 @@
 \addvspace {10\p@ }
 \addvspace {10\p@ }
 \contentsline {table}{\numberline {3.1}{\ignorespaces Yêu cầu kỹ thuật chính của hệ thống}}{6}{table.caption.8}%
-\contentsline {table}{\numberline {3.2}{\ignorespaces Phân bổ các chân điều khiển chính}}{8}{table.caption.10}%
+\contentsline {table}{\numberline {3.2}{\ignorespaces Phân bổ các chân điều khiển chính}}{9}{table.caption.10}%
 \addvspace {10\p@ }
-\contentsline {table}{\numberline {4.1}{\ignorespaces Các lệnh chính của giao thức ASCII}}{10}{table.caption.11}%
-\contentsline {table}{\numberline {4.2}{\ignorespaces Cấu trúc frame dữ liệu mẫu}}{11}{table.caption.12}%
-\contentsline {table}{\numberline {4.3}{\ignorespaces Tài nguyên firmware production được xác nhận gần nhất}}{11}{table.caption.13}%
+\contentsline {table}{\numberline {4.1}{\ignorespaces Các lệnh chính của giao thức ASCII}}{13}{table.caption.14}%
+\contentsline {table}{\numberline {4.2}{\ignorespaces Cấu trúc frame dữ liệu mẫu}}{14}{table.caption.15}%
+\contentsline {table}{\numberline {4.3}{\ignorespaces Tài nguyên firmware production được xác nhận gần nhất}}{14}{table.caption.16}%
 \addvspace {10\p@ }
 \addvspace {10\p@ }
-\contentsline {table}{\numberline {6.1}{\ignorespaces Kết quả kiểm nghiệm USB CDC}}{15}{table.caption.16}%
-\contentsline {table}{\numberline {6.2}{\ignorespaces Kết quả đánh giá các cấu hình lấy mẫu}}{16}{table.caption.17}%
-\contentsline {table}{\numberline {6.3}{\ignorespaces Kết quả phân tích DUT chuẩn tại $20\,\mathrm {kHz}$}}{17}{table.caption.18}%
+\contentsline {table}{\numberline {6.1}{\ignorespaces Kết quả kiểm nghiệm USB CDC}}{20}{table.caption.21}%
+\contentsline {table}{\numberline {6.2}{\ignorespaces Kết quả đánh giá các cấu hình lấy mẫu}}{20}{table.caption.22}%
+\contentsline {table}{\numberline {6.3}{\ignorespaces Ba trường hợp đại diện của phép quét tần số thực tế}}{21}{table.caption.23}%
+\contentsline {table}{\numberline {6.4}{\ignorespaces Kết quả phân tích DUT chuẩn tại $20\,\mathrm {kHz}$}}{28}{table.caption.30}%
 \addvspace {10\p@ }
+\contentsline {table}{\numberline {7.1}{\ignorespaces So sánh nền tảng MCU cho hướng nâng cấp}}{31}{table.caption.31}%
