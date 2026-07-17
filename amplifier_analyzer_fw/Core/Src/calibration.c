@@ -27,10 +27,10 @@ void calibration_reset(void) {
     calib_coeffs.adc1_m[1] = 1.0f;
     calib_coeffs.adc1_m[2] = 1.0f;
     
-    /* CH2 U4A is inverting: restore polarity after range correction. */
-    calib_coeffs.adc2_m[0] = -0.1f;
-    calib_coeffs.adc2_m[1] = -1.0f;
-    calib_coeffs.adc2_m[2] = -3.0f;
+    /* U4A: Rin=10k; Rfeedback is 47k, 4.7k or 1.5k. */
+    calib_coeffs.adc2_m[0] = -10.0f / 47.0f;
+    calib_coeffs.adc2_m[1] = -10.0f / 4.7f;
+    calib_coeffs.adc2_m[2] = -10.0f / 1.5f;
     
     for (int i = 0; i < 3; i++) {
         calib_coeffs.adc1_c[i] = 0.0f;

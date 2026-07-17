@@ -13,9 +13,9 @@ MCP4822_SETTLING_TIME_US = 4.5
 ADC_MAX_CODE = 4095
 ADS7861_MIDSCALE_CODE = 2048.0
 ADS7861_VREF_VOLTS = 2.5
-# U4A is an inverting AC-coupled CH2 frontend. Negative scales restore the
-# original DUT polarity after the nominal magnitude correction for each relay.
-DUT_RANGE_DEFAULT_SCALES = (-0.1, -1.0, -3.0)
+# U4A is an inverting AC-coupled CH2 frontend with R26=10k. Relay feedback
+# resistors are 47k, 4.7k and 1.5k, so reconstruct Vin with -Rin/Rfeedback.
+DUT_RANGE_DEFAULT_SCALES = (-10.0 / 47.0, -10.0 / 4.7, -10.0 / 1.5)
 
 
 @dataclass

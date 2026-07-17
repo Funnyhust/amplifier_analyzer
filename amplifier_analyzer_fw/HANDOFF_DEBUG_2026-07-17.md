@@ -634,3 +634,10 @@ Chưa đạt 200 kSPS continuous. Giới hạn hiện tại không phải do ri�
 - Đo cùng cấu hình 200 Hz/140 kSPS, 4096 mẫu mỗi relay: dải 0.3V có 1882 mẫu rail; 3.3V có 263 mẫu rail; 10V có 0 mẫu rail. Dải 10V raw base `-0.6531..+0.8386V`; scale độ lớn x3 cho `-1.9592..+2.5159V`, chứng minh x3 đã chạy và không clipping.
 - Để khôi phục cực tính DUT, nominal scale đổi thành `-0.1/-1/-3`; dấu âm chỉ bù U4A đảo. UI/CSV ghi rõ CH2 là `Vout AC`, vì offset DC không thể phục hồi qua C22.
 - App 7/7 test đạt. Firmware production đã build/nạp J-Link; `RESET_CALIB` + `SAVE_CALIB` và `GET_CALIB` xác nhận flash là `adc2_r0_m=-0.100000`, `adc2_r1_m=-1.000000`, `adc2_r2_m=-3.000000`.
+
+### 15.22 Scale theo resistor thật và sửa sine thành tam giác
+
+- Từ schematic: CH2 có Rin R26=10k; feedback qua relay là R23=47k, R28=4.7k, R31=1.5k. Vì U4A đảo, hệ số khôi phục chính xác là `-Rin/Rf`: dải 0.3V `-0.212766`, 3.3V `-2.127660`, 10V `-6.666667`. Mapping x3 trước đó chỉ đạt khoảng 45% biên độ thật ở dải 10V.
+- Với DUT vào 1--3V và ra 3--9V, CH2 không thể trả absolute 3--9V vì C22 đã chặn DC 6V; đại lượng phần cứng đo được là AC khoảng -3..+3V, Vpp khoảng 6V. Muốn absolute DC cần bypass C22/thêm đường DC hoặc offset ngoài; app không được tự bịa offset.
+- Root cause sine 200Hz thành tam giác: history giữ 20s rồi decimate toàn bộ xuống 20000 điểm trước khi zoom cửa sổ 2s, chỉ còn khoảng 5 điểm/chu kỳ trong vùng nhìn. App mới crop đúng cửa sổ đang hiển thị trước khi decimate; integration check 20s history/2s view đạt 8750 điểm, 21.875 điểm/chu kỳ 200Hz.
+- App 7/7 test đạt. Production đã build/nạp J-Link; flash calibration sau reset/save/readback là `-0.212766/-2.127660/-6.666667`.

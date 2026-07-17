@@ -1945,6 +1945,19 @@ class SignalAnalyzerApp(QMainWindow):
             plot_t = self.last_raw_time
             plot_ch1 = self.last_raw_ch1
             plot_ch2 = self.last_raw_ch2
+            display_left = None
+            display_right = None
+            if self.chk_follow_stream.isChecked():
+                display_right = max(0.1, self.hardware_history_cursor_s)
+                window = min(
+                    self.history_window_s,
+                    float(self.spin_view_window.value()),
+                )
+                display_left = max(0.0, display_right - window)
+                visible = plot_t >= display_left
+                plot_t = plot_t[visible]
+                plot_ch1 = plot_ch1[visible]
+                plot_ch2 = plot_ch2[visible]
             if plot_t.size > PLOT_MAX_POINTS:
                 display_indices = downsample_extrema_indices(
                     (plot_ch1, plot_ch2), PLOT_MAX_POINTS
@@ -1954,12 +1967,10 @@ class SignalAnalyzerApp(QMainWindow):
                 plot_ch2 = plot_ch2[display_indices]
             self.curve_ch1.setData(plot_t, plot_ch1)
             self.curve_ch2.setData(plot_t, plot_ch2)
-            if self.chk_follow_stream.isChecked():
-                right = max(0.1, self.hardware_history_cursor_s)
-                window = min(self.history_window_s,
-                             float(self.spin_view_window.value()))
-                left = max(0.0, right - window)
-                self.plot_osc.setXRange(left, right, padding=0.0)
+            if display_left is not None:
+                self.plot_osc.setXRange(
+                    display_left, display_right, padding=0.0
+                )
 
     def handle_hardware_capture(self, capture):
         """Qt signal slot: enqueue only so the serial reader never waits."""
