@@ -27,9 +27,10 @@ void calibration_reset(void) {
     calib_coeffs.adc1_m[1] = 1.0f;
     calib_coeffs.adc1_m[2] = 1.0f;
     
-    calib_coeffs.adc2_m[0] = 1.0f;
-    calib_coeffs.adc2_m[1] = 10.0f;
-    calib_coeffs.adc2_m[2] = 100.0f;
+    /* CH2 nominal frontend mapping: /10, direct, then x3. */
+    calib_coeffs.adc2_m[0] = 0.1f;
+    calib_coeffs.adc2_m[1] = 1.0f;
+    calib_coeffs.adc2_m[2] = 3.0f;
     
     for (int i = 0; i < 3; i++) {
         calib_coeffs.adc1_c[i] = 0.0f;

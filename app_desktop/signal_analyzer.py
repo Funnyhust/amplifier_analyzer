@@ -23,6 +23,7 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QColor
 
 from signal_analysis import (
+    DUT_RANGE_DEFAULT_SCALES,
     analyze_channel,
     analyze_dut,
     calculate_sampling_quality,
@@ -968,11 +969,11 @@ class SignalAnalyzerApp(QMainWindow):
         self.cal_adc1_c1 = QLineEdit("0.000000")
         self.cal_adc1_m2 = QLineEdit("100.000000")
         self.cal_adc1_c2 = QLineEdit("0.000000")
-        self.cal_adc2_m0 = QLineEdit("1.000000")
+        self.cal_adc2_m0 = QLineEdit(f"{DUT_RANGE_DEFAULT_SCALES[0]:.6f}")
         self.cal_adc2_c0 = QLineEdit("0.000000")
-        self.cal_adc2_m1 = QLineEdit("10.000000")
+        self.cal_adc2_m1 = QLineEdit(f"{DUT_RANGE_DEFAULT_SCALES[1]:.6f}")
         self.cal_adc2_c1 = QLineEdit("0.000000")
-        self.cal_adc2_m2 = QLineEdit("100.000000")
+        self.cal_adc2_m2 = QLineEdit(f"{DUT_RANGE_DEFAULT_SCALES[2]:.6f}")
         self.cal_adc2_c2 = QLineEdit("0.000000")
 
         self.calibration_fields = {
@@ -2266,11 +2267,11 @@ class SignalAnalyzerApp(QMainWindow):
             self.cal_adc1_c1.setText("0.000000")
             self.cal_adc1_m2.setText("100.000000")
             self.cal_adc1_c2.setText("0.000000")
-            self.cal_adc2_m0.setText("1.000000")
+            self.cal_adc2_m0.setText(f"{DUT_RANGE_DEFAULT_SCALES[0]:.6f}")
             self.cal_adc2_c0.setText("0.000000")
-            self.cal_adc2_m1.setText("10.000000")
+            self.cal_adc2_m1.setText(f"{DUT_RANGE_DEFAULT_SCALES[1]:.6f}")
             self.cal_adc2_c1.setText("0.000000")
-            self.cal_adc2_m2.setText("100.000000")
+            self.cal_adc2_m2.setText(f"{DUT_RANGE_DEFAULT_SCALES[2]:.6f}")
             self.cal_adc2_c2.setText("0.000000")
             self.set_calibration_status("default")
             QMessageBox.information(self, self.tr("Success"), self.tr("Calibration reset to defaults and saved to Flash."))

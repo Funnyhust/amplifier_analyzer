@@ -620,3 +620,10 @@ Chưa đạt 200 kSPS continuous. Giới hạn hiện tại không phải do ri�
 - Giao diện đổi tên group thành `CH2 Vout / DUT Input Range`; bỏ các ô ADC1 3.3V/10V khỏi calibration UI vì chúng không có ý nghĩa trên phần cứng này. Struct/protocol cũ vẫn giữ field để tương thích flash.
 - Firmware `calibration_adc_code_to_voltage()` ép CH1 dùng index 0 bất kể range caller truyền; USB simulation cũng đổi sang `adc1_m/c[0]`. Default ADC1 index 1/2 đặt 1.0 và chỉ còn là field tương thích ABI.
 - Unit test mới đặt hệ số CH2 bằng 100 và xác nhận CH1 vẫn đúng direct voltage; toàn bộ 6/6 test đạt. Production build đạt RAM `18336/20480 = 89.5%`, flash `57140/65536 = 87.2%`; đã nạp thành công qua J-Link và reset MCU.
+
+### 15.20 Sửa nominal scale ba dải CH2
+
+- Bộ scale cũ `1/10/100` là sai với frontend thực tế và làm dải 3.3V hiển thị khoảng 20--25V. Mapping được xác nhận và khóa lại: `0.3V -> 0.1` (chia 10), `3.3V -> 1.0` (giữ nguyên), `10V -> 3.0` (nhân 3).
+- App dùng constant `DUT_RANGE_DEFAULT_SCALES=(0.1,1.0,3.0)` cho cả khởi tạo UI và Reset Defaults. Firmware `calibration_reset()` dùng cùng ba giá trị.
+- Unit test mapping mới đạt; tổng 7/7 test app đạt. Production build/nạp J-Link thành công, không thay đổi RAM/flash đáng kể.
+- Đã chạy `RESET_CALIB`, `SAVE_CALIB` và đọc lại flash qua COM4: `adc2_r0_m=0.100000`, `adc2_r1_m=1.000000`, `adc2_r2_m=3.000000`; tất cả offset bằng 0.

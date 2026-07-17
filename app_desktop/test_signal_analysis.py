@@ -4,6 +4,7 @@ import unittest
 import numpy as np
 
 from signal_analysis import (
+    DUT_RANGE_DEFAULT_SCALES,
     analyze_channel,
     analyze_dut,
     calculate_sampling_quality,
@@ -85,6 +86,17 @@ class SamplingQualityTests(unittest.TestCase):
         expected_vin = raw_adc_to_volts(raw) + 2.5
         np.testing.assert_allclose(vin, expected_vin)
         np.testing.assert_allclose(vout, raw_adc_to_volts(raw) * 100.0)
+
+    def test_dut_range_nominal_scale_mapping(self):
+        self.assertEqual(DUT_RANGE_DEFAULT_SCALES, (0.1, 1.0, 3.0))
+        raw = np.array([1024, 2048, 3072])
+        base = raw_adc_to_volts(raw)
+        for scale in DUT_RANGE_DEFAULT_SCALES:
+            with self.subTest(scale=scale):
+                _, vout = convert_measurement_channels(
+                    raw, raw, vout_range_scale=scale
+                )
+                np.testing.assert_allclose(vout, base * scale)
 
 
 if __name__ == "__main__":
