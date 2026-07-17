@@ -566,3 +566,10 @@ Chưa đạt 200 kSPS continuous. Giới hạn hiện tại không phải do ri�
 - ADC nội bộ sạch đến 150 kSPS; 160 kSPS làm main bị starvation nên không được coi là usable.
 - Soak ADC 140 kSPS + DAC update 50 kHz trong 30.000 s: host nhận `4201472` mẫu (`140049.1 SPS`), 8206 frame; CRC/sequence/junk lỗi 0; firmware `PRODUCED=4202421, OVERRUN=0, INVALID=0, OVERWRITE=0`; DAC `TX_ERR=0`.
 - Build production: RAM 18328/20480 byte (89.5%), flash 57172/65536 byte (87.2%). App live stream nâng lên 140 kSPS.
+
+### 15.13 Biên tối đa sau checkpoint 140 kSPS
+
+- Tối ưu tiếp vòng raw-to-packed: thứ tự A/B được xác định một lần ở frame đầu stream, strict status vẫn kiểm tra mọi mẫu nhưng counter invalid được gom theo nhóm 4; phép đổi raw 32-bit sang packed-24 dùng biểu thức mask/shift trực tiếp.
+- Quét end-to-end 4 s với DAC 50 kHz: 142/144/145 kSPS sạch (`OVERRUN=INVALID=OVERWRITE=0`, CRC/sequence 0); 146 kSPS bắt đầu `OVERWRITE=2560`, 148 kSPS `OVERWRITE=101888`; 150 kSPS không usable. Vì checkpoint theo bước 10 kSPS nên app/production vẫn giữ 140 kSPS, còn 145 kSPS chỉ là headroom ngắn hạn chưa qualify soak.
+- ADC/SPI nội bộ đã sạch đến 150 kSPS. Giới hạn hiện tại là CPU đóng gói cộng transport USB CDC single-PMA-buffer, không phải clock 72 MHz nói chung và không phải SPI2 18 MHz.
+- Đã thử bật PMA double-buffer cho CDC IN 0x81 nhưng ST CDC/PCD state machine hiện tại write-timeout ngay từ PING; thay đổi đã rollback. Muốn vượt 150 kSPS lossless cần refactor đồng bộ callback/state machine USB double-buffer hoặc chuyển transport USB riêng, không chỉ đổi `PCD_DBL_BUF`.

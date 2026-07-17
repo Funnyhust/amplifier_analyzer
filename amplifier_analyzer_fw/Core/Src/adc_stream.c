@@ -33,6 +33,8 @@ static uint8_t usb_build_index;
 static uint8_t usb_pending_valid;
 static uint8_t usb_pending_index;
 static uint16_t usb_pending_len;
+static uint8_t raw_order_known;
+static uint8_t raw_order_swapped;
 static volatile adc_stream_stats_t stream_stats;
 
 static inline uint8_t *adc_stream_usb_frame(uint8_t index)
@@ -100,6 +102,8 @@ void adc_stream_init(ads7861_t *dev)
     usb_pending_valid = 0U;
     usb_pending_index = 0U;
     usb_pending_len = 0U;
+    raw_order_known = 0U;
+    raw_order_swapped = 0U;
     memset((void *)&stream_stats, 0, sizeof(stream_stats));
 }
 
@@ -129,6 +133,8 @@ uint8_t adc_stream_start(uint32_t sample_rate_hz)
     usb_pending_valid = 0U;
     usb_pending_index = 0U;
     usb_pending_len = 0U;
+    raw_order_known = 0U;
+    raw_order_swapped = 0U;
     stream_stats.requested_fs = sample_rate_hz;
 
     /*
@@ -258,21 +264,11 @@ static inline void adc_stream_store_pair(uint16_t word_a, uint16_t word_b,
 static inline __attribute__((always_inline)) uint32_t
 adc_stream_transport_code(uint32_t raw)
 {
-    uint16_t word_a = (uint16_t)(raw >> 16);
-    uint16_t word_b = (uint16_t)raw;
-    uint16_t vin;
-    uint16_t vout;
-
-    if ((word_a & 0x4000U) != 0U && (word_b & 0x4000U) == 0U) {
-        uint16_t wt = word_a; word_a = word_b; word_b = wt;
-    }
-    if ((word_a & 0xC003U) != 0x0000U ||
-        (word_b & 0xC003U) != 0x4000U) {
-        stream_stats.invalid_frame++;
-    }
-    vin = (uint16_t)(((word_b >> 2) & 0x0FFFU) ^ 0x0800U);
-    vout = (uint16_t)(((word_a >> 2) & 0x0FFFU) ^ 0x0800U);
-    return ((uint32_t)vin << 12) | (uint32_t)vout;
+    /* Vin is word B and Vout is word A. Extract both 12-bit payloads in one
+     * expression; XOR converts their two's-complement sign bits to the app's
+     * unsigned offset-binary transport convention. */
+    return (((((raw >> 2) & 0x0FFFU) << 12) |
+             ((raw >> 18) & 0x0FFFU)) ^ 0x00800800U);
 }
 
 __attribute__((optimize("O3"))) void adc_stream_timer_irq(void)
@@ -425,10 +421,37 @@ __attribute__((optimize("O3"))) void adc_stream_usb_service(void)
         uint32_t xor_words = 0U;
         uint32_t *destination = (uint32_t *)&frame[pos];
         for (uint16_t i = 0U; i < count; i += 4U) {
-            uint32_t p0 = adc_stream_transport_code(raw_ring[ring_index + i]);
-            uint32_t p1 = adc_stream_transport_code(raw_ring[ring_index + i + 1U]);
-            uint32_t p2 = adc_stream_transport_code(raw_ring[ring_index + i + 2U]);
-            uint32_t p3 = adc_stream_transport_code(raw_ring[ring_index + i + 3U]);
+            uint32_t r0 = raw_ring[ring_index + i];
+            uint32_t r1 = raw_ring[ring_index + i + 1U];
+            uint32_t r2 = raw_ring[ring_index + i + 2U];
+            uint32_t r3 = raw_ring[ring_index + i + 3U];
+            uint32_t invalid_count;
+            uint32_t p0;
+            uint32_t p1;
+            uint32_t p2;
+            uint32_t p3;
+
+            if (raw_order_known == 0U) {
+                raw_order_swapped =
+                    ((r0 & 0xC003C003U) == 0x40000000U) ? 1U : 0U;
+                raw_order_known = 1U;
+            }
+            if (raw_order_swapped != 0U) {
+                r0 = (r0 << 16) | (r0 >> 16);
+                r1 = (r1 << 16) | (r1 >> 16);
+                r2 = (r2 << 16) | (r2 >> 16);
+                r3 = (r3 << 16) | (r3 >> 16);
+            }
+            invalid_count =
+                ((r0 & 0xC003C003U) != 0x00004000U) +
+                ((r1 & 0xC003C003U) != 0x00004000U) +
+                ((r2 & 0xC003C003U) != 0x00004000U) +
+                ((r3 & 0xC003C003U) != 0x00004000U);
+            stream_stats.invalid_frame += invalid_count;
+            p0 = adc_stream_transport_code(r0);
+            p1 = adc_stream_transport_code(r1);
+            p2 = adc_stream_transport_code(r2);
+            p3 = adc_stream_transport_code(r3);
             uint32_t w0 = (p0 >> 16) | (p0 & 0x00FF00U) |
                           ((p0 & 0xFFU) << 16) | ((p1 >> 16) << 24);
             uint32_t w1 = ((p1 >> 8) & 0xFFU) |
