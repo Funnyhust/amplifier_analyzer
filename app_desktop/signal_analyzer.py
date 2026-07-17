@@ -2,6 +2,10 @@ import sys
 import os
 import csv
 import json
+import pickle
+import socket
+import struct
+import subprocess
 import time
 from collections import deque
 from datetime import datetime, timezone
@@ -28,6 +32,23 @@ from signal_analysis import (
 )
 
 APP_SETTINGS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app_settings.json")
+SERIAL_RX_BUFFER_BYTES = 4 * 1024 * 1024
+SERIAL_TX_BUFFER_BYTES = 64 * 1024
+PLOT_MAX_POINTS = 20000
+
+
+def configure_serial_driver_buffers(serial_conn):
+    """Give Windows CDC enough queueing headroom for temporary GUI stalls."""
+    try:
+        serial_conn.set_buffer_size(
+            rx_size=SERIAL_RX_BUFFER_BYTES,
+            tx_size=SERIAL_TX_BUFFER_BYTES,
+        )
+        return True
+    except (AttributeError, NotImplementedError, OSError):
+        return False
+
+
 DEFAULT_APP_SETTINGS = {
     "language": "vi",
     "theme": "dark",
@@ -478,123 +499,110 @@ class LiveStreamWorker(QThread):
 
     capture_ready = pyqtSignal(object)
     capture_error = pyqtSignal(str)
+    capture_warning = pyqtSignal(str)
 
     # Proven end-to-end with ADC at 140 kSPS and DAC DMA up to 200 kupdate/s.
     STREAM_FS = 140000
-    # A 512-sample USB frame arrives about 273 times/s at 140 kSPS. Emitting
-    # every frame makes GUI FFT/metrics callbacks contend with the serial
-    # reader for the Python GIL. Batch 16 losslessly checked frames so the GUI
-    # updates at about 17 Hz while the worker keeps draining COM continuously.
-    UI_BLOCK_SAMPLES = 8192
+    # A 512-sample USB frame arrives about 273 times/s at 140 kSPS. Batch eight
+    # losslessly checked frames; the GUI separately throttles expensive DSP and
+    # plotting so no individual callback monopolizes the GIL for too long.
+    UI_BLOCK_SAMPLES = 4096
 
-    def __init__(self, serial_conn):
+    def __init__(self, serial_port):
         super().__init__()
-        self.serial_conn = serial_conn
+        self.serial_port = serial_port
         self.stop_requested = False
-        self.expected_sequence = None
+        self.reader_process = None
+        self.message_connection = None
+        self.message_listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.message_listener.setsockopt(
+            socket.SOL_SOCKET, socket.SO_RCVBUF, 4 * 1024 * 1024
+        )
+        self.message_listener.bind(("127.0.0.1", 0))
+        self.message_listener.listen(1)
+        self.message_listener.settimeout(5.0)
 
-    def _read_exact(self, size):
+    @staticmethod
+    def _socket_read_exact(connection, size):
         data = bytearray()
         while len(data) < size:
-            chunk = self.serial_conn.read(size - len(data))
+            chunk = connection.recv(size - len(data))
             if not chunk:
-                raise TimeoutError(f"short stream read: {len(data)}/{size}")
+                raise EOFError
             data.extend(chunk)
         return bytes(data)
 
     def request_stop(self):
         self.stop_requested = True
+        if self.reader_process is not None:
+            try:
+                self.reader_process.terminate()
+            except Exception:
+                pass
         try:
-            self.serial_conn.write(b"ADC_STREAM_STOP\n")
-            self.serial_conn.flush()
+            self.message_listener.close()
+            if self.message_connection is not None:
+                self.message_connection.close()
         except Exception:
             pass
 
     def run(self):
-        pending_ch1 = []
-        pending_ch2 = []
-        pending_count = 0
-        first_pending_sequence = None
+        helper = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              "stream_reader_process.py")
+        creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         try:
-            # START initializes the independent continuous DAC generator.
-            self.serial_conn.write(b"START\n")
-            self.serial_conn.flush()
-            if self.serial_conn.readline().decode("utf-8").strip() != "OK":
-                raise RuntimeError("Device did not acknowledge START.")
-
-            command = f"ADC_USB_STREAM_START:FS={self.STREAM_FS}\n".encode()
-            self.serial_conn.write(command)
-            self.serial_conn.flush()
-            if self.serial_conn.readline().decode("utf-8").strip() != "OK":
-                raise RuntimeError("Device did not start ADC USB stream.")
-
-            while True:
-                first = self._read_exact(1)
-                if first == b"O":
-                    response = first + self.serial_conn.readline()
-                    if self.stop_requested and response.strip() == b"OK":
-                        break
-                    raise ValueError(f"unexpected stream response: {response!r}")
-                if first != b"\xaa":
-                    raise ValueError(f"invalid stream prefix: {first.hex()}")
-                header = first + self._read_exact(4)
-                if header[:2] != b"\xaa\xbb" or header[2] not in (0x01, 0x04):
-                    raise ValueError(f"invalid stream header: {header.hex(' ')}")
-                payload_length = int.from_bytes(header[3:5], "big")
-                payload = self._read_exact(payload_length)
-                received_crc = self._read_exact(1)[0]
-                calculated_crc = 0
-                for value in payload:
-                    calculated_crc ^= value
-                if received_crc != calculated_crc:
-                    raise ValueError(
-                        f"stream CRC mismatch: {received_crc:02X}/{calculated_crc:02X}"
-                    )
-
-                sequence = int.from_bytes(payload[0:4], "big")
-                fs = int.from_bytes(payload[4:8], "big")
-                count = int.from_bytes(payload[8:10], "big")
-                bytes_per_sample = 3 if header[2] == 0x04 else 4
-                if payload_length != 10 + count * bytes_per_sample:
-                    raise ValueError("invalid stream payload length")
-                if self.expected_sequence is not None and sequence != self.expected_sequence:
-                    raise RuntimeError(
-                        f"ADC sample loss: expected {self.expected_sequence}, got {sequence}"
-                    )
-                self.expected_sequence = sequence + count
-
-                if header[2] == 0x04:
-                    packed_bytes = np.frombuffer(payload[10:], dtype=np.uint8)
-                    packed_bytes = packed_bytes.reshape(-1, 3).astype(np.uint32)
-                    packed = ((packed_bytes[:, 0] << 16) |
-                              (packed_bytes[:, 1] << 8) |
-                              packed_bytes[:, 2])
-                    ch1_raw = ((packed >> 12) & 0x0FFF).astype(np.uint16)
-                    ch2_raw = (packed & 0x0FFF).astype(np.uint16)
-                else:
-                    raw = np.frombuffer(payload[10:], dtype=">u2").copy()
-                    ch1_raw = raw[0::2]
-                    ch2_raw = raw[1::2]
-                if first_pending_sequence is None:
-                    first_pending_sequence = sequence
-                pending_ch1.append(ch1_raw)
-                pending_ch2.append(ch2_raw)
-                pending_count += count
-                if pending_count >= self.UI_BLOCK_SAMPLES:
-                    self.capture_ready.emit({
-                        "ch1_raw": np.concatenate(pending_ch1),
-                        "ch2_raw": np.concatenate(pending_ch2),
-                        "device_result": {"fs_actual": float(fs)},
-                        "sequence": first_pending_sequence,
-                        "streaming": True,
-                    })
-                    pending_ch1 = []
-                    pending_ch2 = []
-                    pending_count = 0
-                    first_pending_sequence = None
+            self.reader_process = subprocess.Popen(
+                [sys.executable, helper, self.serial_port, str(self.STREAM_FS),
+                 str(self.message_listener.getsockname()[1])],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                creationflags=creation_flags,
+            )
+            self.message_connection, _ = self.message_listener.accept()
+            self.message_connection.setsockopt(
+                socket.SOL_SOCKET, socket.SO_RCVBUF, 4 * 1024 * 1024
+            )
+            while not self.stop_requested:
+                try:
+                    length = struct.unpack(
+                        "<I", self._socket_read_exact(
+                            self.message_connection, 4
+                        )
+                    )[0]
+                    message = pickle.loads(self._socket_read_exact(
+                        self.message_connection, length
+                    ))
+                except EOFError:
+                    break
+                kind = message.get("kind")
+                if kind == "capture":
+                    self.capture_ready.emit(message["capture"])
+                elif kind == "warning":
+                    self.capture_warning.emit(message["message"])
+                elif kind == "error":
+                    raise RuntimeError(message["message"])
+            if (not self.stop_requested and self.reader_process.poll() not in
+                    (None, 0)):
+                error_text = self.reader_process.stderr.read().decode(
+                    "utf-8", errors="replace").strip()
+                raise RuntimeError(error_text or "stream reader process exited")
         except Exception as exc:
             if not self.stop_requested:
                 self.capture_error.emit(str(exc))
+        finally:
+            if self.reader_process is not None and self.reader_process.poll() is None:
+                self.reader_process.terminate()
+                try:
+                    self.reader_process.wait(timeout=2.0)
+                except subprocess.TimeoutExpired:
+                    self.reader_process.kill()
+            try:
+                if self.message_connection is not None:
+                    self.message_connection.close()
+                self.message_listener.close()
+            except Exception:
+                pass
 
 # ==========================================
 # 3. GIAO DIỆN CHÍNH (GUI)
@@ -617,18 +625,22 @@ class SignalAnalyzerApp(QMainWindow):
         
         # Serial variables
         self.serial_conn = None
+        self.streaming_port = None
         self.last_raw_ch1 = np.array([])
         self.last_raw_ch2 = np.array([])
         self.last_raw_time = np.array([])
         self.history_window_s = 20.0
         self.hardware_history = deque()
+        self.pending_hardware_captures = deque()
         self.hardware_history_cursor_s = 0.0
         self.last_history_plot_at = 0.0
+        self.last_metrics_update_at = 0.0
         self.last_ch1_metrics = None
         self.last_ch2_metrics = None
         self.last_dut_metrics = None
         self.last_evaluation = None
         self.last_sampling_quality = None
+        self.analysis_warmed = False
         self.last_communication_ok = True
         self.last_data_complete = True
         self.last_communication_error = ""
@@ -1399,6 +1411,7 @@ class SignalAnalyzerApp(QMainWindow):
             try:
                 # GPIO-clock ADS7861 bring-up can take ~1.7 s for 512 samples.
                 self.serial_conn = serial.Serial(port, 115200, timeout=5.0)
+                configure_serial_driver_buffers(self.serial_conn)
                 time.sleep(0.25)
                 self.serial_conn.reset_input_buffer()
                 res = ""
@@ -1641,13 +1654,12 @@ class SignalAnalyzerApp(QMainWindow):
     def toggle_live(self, mode):
         if self.live_timer.isActive():
             self.live_timer.stop()
-            if self.serial_conn and self.serial_conn.is_open:
-                if self.capture_worker and self.capture_worker.isRunning():
-                    self.pending_device_stop = True
-                    if isinstance(self.capture_worker, LiveStreamWorker):
-                        self.capture_worker.request_stop()
-                else:
-                    self.stop_device_safely()
+            if self.capture_worker and self.capture_worker.isRunning():
+                self.pending_device_stop = True
+                if isinstance(self.capture_worker, LiveStreamWorker):
+                    self.capture_worker.request_stop()
+            elif self.serial_conn and self.serial_conn.is_open:
+                self.stop_device_safely()
             self.btn_ana_live.setText(self.tr("Start Test"))
             self.btn_ana_live.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; height: 35px;")
             self.btn_osc_live.setText(self.tr("Start Passive Oscillo (RX Only)"))
@@ -1672,6 +1684,7 @@ class SignalAnalyzerApp(QMainWindow):
                         f"Device response: {self.last_command_response}",
                     )
                     return
+                self.warmup_live_analysis()
             self.reset_hardware_history()
             self.pending_device_stop = False
             self.last_communication_ok = True
@@ -1695,18 +1708,21 @@ class SignalAnalyzerApp(QMainWindow):
     def process_live_data(self):
         if self._closing:
             return
+        self.process_pending_hardware_captures()
+        if self.capture_worker is not None or self.streaming_port is not None:
+            return
         if self.serial_conn and self.serial_conn.is_open:
-            # Do not replace the object until its finished handler clears it.
-            # isRunning() may already be false while the queued finished signal
-            # is still pending, which previously deleted the next live worker.
-            if self.capture_worker is not None:
-                return
-            worker = LiveStreamWorker(self.serial_conn)
+            port = self.serial_conn.port
+            self.serial_conn.close()
+            self.serial_conn = None
+            self.streaming_port = port
+            worker = LiveStreamWorker(port)
             self.capture_worker = worker
             worker.capture_ready.connect(self.handle_hardware_capture)
             worker.capture_error.connect(self.handle_capture_error)
+            worker.capture_warning.connect(self.handle_capture_warning)
             worker.finished.connect(self.capture_finished)
-            worker.start()
+            worker.start(QThread.Priority.TimeCriticalPriority)
 
         else:
             # SIMULATION MODE fallback
@@ -1747,10 +1763,33 @@ class SignalAnalyzerApp(QMainWindow):
             self.capture_worker = None
         if worker is not None:
             worker.deleteLater()
+        self.restore_serial_after_stream()
         if (not self._closing and self.pending_device_stop and
                 self.serial_conn and self.serial_conn.is_open):
             self.pending_device_stop = False
             self.stop_device_safely()
+
+    def restore_serial_after_stream(self):
+        if self.streaming_port is None:
+            return
+        port = self.streaming_port
+        last_error = None
+        for _ in range(10):
+            try:
+                self.serial_conn = serial.Serial(
+                    port, 115200, timeout=5.0, write_timeout=1.0
+                )
+                configure_serial_driver_buffers(self.serial_conn)
+                time.sleep(0.1)
+                self.serial_conn.reset_input_buffer()
+                self.streaming_port = None
+                return
+            except Exception as exc:
+                last_error = exc
+                self.serial_conn = None
+                time.sleep(0.1)
+        if not self._closing:
+            self.handle_capture_error(f"Cannot reopen {port}: {last_error}")
 
     def handle_capture_error(self, message):
         if self._closing:
@@ -1778,6 +1817,16 @@ class SignalAnalyzerApp(QMainWindow):
         )
         self.dut_table.setItem(7, 1, QTableWidgetItem(f"ERROR: {message}"))
 
+    def handle_capture_warning(self, message):
+        if self._closing:
+            return
+        self.last_data_complete = False
+        self.last_communication_error = message
+        self.lbl_conn_status.setText(f"Stream warning: {message}")
+        self.lbl_conn_status.setStyleSheet(
+            "color: #FFB300; font-weight: bold;"
+        )
+
     def active_range_index(self, device_result=None):
         if device_result and "range" in device_result:
             return max(0, min(2, int(device_result["range"])))
@@ -1797,13 +1846,30 @@ class SignalAnalyzerApp(QMainWindow):
     def reset_hardware_history(self):
         """Start a new contiguous sample-time display without stale captures."""
         self.hardware_history.clear()
+        self.pending_hardware_captures.clear()
         self.hardware_history_cursor_s = 0.0
-        self.last_history_plot_at = 0.0
+        now = time.monotonic()
+        self.last_history_plot_at = now
+        self.last_metrics_update_at = now
         self.last_raw_ch1 = np.array([])
         self.last_raw_ch2 = np.array([])
         self.last_raw_time = np.array([])
 
-    def append_hardware_history(self, local_t, ch1, ch2):
+    def warmup_live_analysis(self):
+        """Pay one-time SciPy/FFT cold-start cost before USB streaming."""
+        if self.analysis_warmed:
+            return
+        fs = float(LiveStreamWorker.STREAM_FS)
+        frequency = max(1.0, float(self.ana_spin_freq.value()))
+        count = 4096
+        t = np.arange(count, dtype=np.float64) / fs
+        samples = np.sin(2.0 * np.pi * frequency * t)
+        raw = np.full(count, 2048, dtype=np.uint16)
+        analyze_channel(samples, fs, frequency, raw)
+        analyze_channel(samples * 0.5, fs, frequency, raw)
+        self.analysis_warmed = True
+
+    def append_hardware_history(self, local_t, ch1, ch2, duration_s=None):
         """Append finite blocks on one contiguous sample-time rolling axis.
 
         The display intentionally compresses command/USB idle gaps. DSP remains
@@ -1816,9 +1882,13 @@ class SignalAnalyzerApp(QMainWindow):
             return
         sample_interval = (float(local_t[1] - local_t[0])
                            if local_t.size > 1 else 0.0)
-        absolute_t = local_t + self.hardware_history_cursor_s
+        block_start = self.hardware_history_cursor_s
+        absolute_t = local_t + block_start
         self.hardware_history.append((absolute_t, ch1.copy(), ch2.copy()))
-        self.hardware_history_cursor_s = float(absolute_t[-1]) + sample_interval
+        if duration_s is None:
+            self.hardware_history_cursor_s = float(absolute_t[-1]) + sample_interval
+        else:
+            self.hardware_history_cursor_s = block_start + float(duration_s)
 
         cutoff = self.hardware_history_cursor_s - self.history_window_s
         while (self.hardware_history and
@@ -1832,7 +1902,7 @@ class SignalAnalyzerApp(QMainWindow):
                 (block_t[keep], block_ch1[keep], block_ch2[keep]))
 
         now = time.monotonic()
-        if now - self.last_history_plot_at < 0.1:
+        if now - self.last_history_plot_at < 0.2:
             return
         self.last_history_plot_at = now
 
@@ -1844,8 +1914,35 @@ class SignalAnalyzerApp(QMainWindow):
         self.last_raw_ch2 = np.concatenate(values2) if values2 else np.array([])
 
         if times:
-            self.curve_ch1.setData(self.last_raw_time, self.last_raw_ch1)
-            self.curve_ch2.setData(self.last_raw_time, self.last_raw_ch2)
+            plot_t = self.last_raw_time
+            plot_ch1 = self.last_raw_ch1
+            plot_ch2 = self.last_raw_ch2
+            if plot_t.size > PLOT_MAX_POINTS:
+                # Preserve local extrema instead of handing millions of raw
+                # points to pyqtgraph. Two envelope points per bucket are more
+                # useful than a stride that can alias high-frequency signals.
+                bucket = int(np.ceil(
+                    plot_t.size / float(PLOT_MAX_POINTS // 2)
+                ))
+                group_count = plot_t.size // bucket
+                used = group_count * bucket
+                grouped_t = plot_t[:used].reshape(group_count, bucket)
+                grouped_ch1 = plot_ch1[:used].reshape(group_count, bucket)
+                grouped_ch2 = plot_ch2[:used].reshape(group_count, bucket)
+                envelope_t = np.empty(group_count * 2, dtype=np.float64)
+                envelope_ch1 = np.empty(group_count * 2, dtype=np.float64)
+                envelope_ch2 = np.empty(group_count * 2, dtype=np.float64)
+                envelope_t[0::2] = grouped_t[:, 0]
+                envelope_t[1::2] = grouped_t[:, -1]
+                envelope_ch1[0::2] = grouped_ch1.min(axis=1)
+                envelope_ch1[1::2] = grouped_ch1.max(axis=1)
+                envelope_ch2[0::2] = grouped_ch2.min(axis=1)
+                envelope_ch2[1::2] = grouped_ch2.max(axis=1)
+                plot_t = envelope_t
+                plot_ch1 = envelope_ch1
+                plot_ch2 = envelope_ch2
+            self.curve_ch1.setData(plot_t, plot_ch1)
+            self.curve_ch2.setData(plot_t, plot_ch2)
             if self.chk_follow_stream.isChecked():
                 right = max(0.1, self.hardware_history_cursor_s)
                 window = min(self.history_window_s,
@@ -1854,6 +1951,68 @@ class SignalAnalyzerApp(QMainWindow):
                 self.plot_osc.setXRange(left, right, padding=0.0)
 
     def handle_hardware_capture(self, capture):
+        """Qt signal slot: enqueue only so the serial reader never waits."""
+        self.pending_hardware_captures.append(capture)
+
+    def process_pending_hardware_captures(self):
+        if not self.pending_hardware_captures:
+            return
+        captures = []
+        while self.pending_hardware_captures:
+            captures.append(self.pending_hardware_captures.popleft())
+        for capture in captures:
+            self.append_raw_capture_history(capture)
+        now = time.monotonic()
+        if now - self.last_metrics_update_at >= 0.2:
+            self.last_metrics_update_at = now
+            self.consume_hardware_capture(captures[-1], append_history=False)
+
+    def append_raw_capture_history(self, capture):
+        device_result = capture.get("device_result") or {}
+        fs = float(device_result.get("fs_actual", self.ana_spin_fs.value()))
+        if fs <= 0.0:
+            fs = float(self.ana_spin_fs.value())
+        ch1_raw = np.asarray(capture["ch1_raw"])
+        ch2_raw = np.asarray(capture["ch2_raw"])
+        count = ch1_raw.size
+        if count == 0:
+            return
+        target_points = 256
+        if count > target_points:
+            bucket = int(np.ceil(count / float(target_points // 2)))
+            groups = count // bucket
+            used = groups * bucket
+            r1 = ch1_raw[:used].reshape(groups, bucket)
+            r2 = ch2_raw[:used].reshape(groups, bucket)
+            reduced1 = np.empty(groups * 2, dtype=ch1_raw.dtype)
+            reduced2 = np.empty(groups * 2, dtype=ch2_raw.dtype)
+            reduced1[0::2] = r1.min(axis=1)
+            reduced1[1::2] = r1.max(axis=1)
+            reduced2[0::2] = r2.min(axis=1)
+            reduced2[1::2] = r2.max(axis=1)
+            indices = np.empty(groups * 2, dtype=np.float64)
+            indices[0::2] = np.arange(groups, dtype=np.float64) * bucket
+            indices[1::2] = indices[0::2] + (bucket - 1)
+            ch1_raw = reduced1
+            ch2_raw = reduced2
+        else:
+            indices = np.arange(count, dtype=np.float64)
+        range_index = self.active_range_index(device_result)
+        ch1 = raw_adc_to_volts(
+            ch1_raw,
+            self.calibration_value("adc1_r0_m", 1.0),
+            self.calibration_value("adc1_r0_c", 0.0),
+        ) + ADS7861_VREF_VOLTS
+        ch2 = raw_adc_to_volts(
+            ch2_raw,
+            self.calibration_value(f"adc2_r{range_index}_m", 1.0),
+            self.calibration_value(f"adc2_r{range_index}_c", 0.0),
+        )
+        self.append_hardware_history(
+            indices / fs, ch1, ch2, duration_s=count / fs
+        )
+
+    def consume_hardware_capture(self, capture, append_history=True):
         device_result = capture.get("device_result") or {}
         if "range_name" in device_result and "range_mode" in device_result:
             self.lbl_range_status.setText(
@@ -1884,7 +2043,8 @@ class SignalAnalyzerApp(QMainWindow):
         streaming = bool(capture.get("streaming"))
         self.handle_samples(t, ch1, ch2, ch1_raw, ch2_raw,
                             update_plot=not streaming)
-        self.append_hardware_history(t, ch1, ch2)
+        if append_history:
+            self.append_hardware_history(t, ch1, ch2)
 
     def handle_samples(self, t, ch1, ch2, ch1_raw=None, ch2_raw=None,
                        update_plot=True):
@@ -2212,6 +2372,7 @@ class SignalAnalyzerApp(QMainWindow):
                 self._closing = False
                 event.ignore()
                 return
+        self.restore_serial_after_stream()
         if self.serial_conn and self.serial_conn.is_open:
             try:
                 self.stop_device_safely()

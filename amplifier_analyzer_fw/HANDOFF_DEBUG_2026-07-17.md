@@ -590,3 +590,12 @@ Chưa đạt 200 kSPS continuous. Giới hạn hiện tại không phải do ri�
 - Root cause: `LiveStreamWorker` phát `capture_ready` cho từng frame 512 mẫu. Ở 140 kSPS là khoảng 273 callback GUI/s; mỗi callback chạy FFT/metrics/history và tranh Python GIL với thread đọc COM, khiến reader có thể không drain serial kịp.
 - Giữ nguyên toàn bộ sample và CRC/sequence validation nhưng gom 16 frame thành `UI_BLOCK_SAMPLES=8192`, giảm GUI analysis xuống khoảng 17 callback/s. Nội dung lỗi stream cũng được đưa lên dòng trạng thái kết nối thay vì chỉ nằm ở bảng DUT phía dưới.
 - `py_compile` đạt; 4/4 unit test đạt. Full GUI smoke offscreen với cấu hình 200 Hz, 1 Vpeak, ADC 140 kSPS chạy 10 s: timer active, worker running, error rỗng, nút vẫn `DỪNG phép đo`, history đạt 9.77 s / khoảng 1.36 triệu mẫu. Start/stop cleanup hoàn tất không cần rút USB.
+
+### 15.16 Tách COM reader khỏi process GUI
+
+- Batching trong `QThread` chưa đủ khi cửa sổ thật đang render: GUI/FFT vẫn có thể giữ Python GIL đủ lâu để Windows CDC back-pressure STM32. Lỗi quan sát được là sequence nhảy đúng các block 512/1024 mẫu và app tự dừng sau khoảng 50--120 ms; firmware direct-COM soak vẫn sạch.
+- `stream_reader_process.py` mới giữ COM và parse/kiểm tra header, length, CRC, sequence trong process Python riêng. Dữ liệu 4096 mẫu được chuyển lossless sang GUI qua localhost TCP với socket buffer 4 MiB; vì khác process nên GUI không còn chặn reader bằng GIL.
+- GUI chỉ enqueue block ở Qt slot, timer mới drain queue; FFT/metrics và plot giới hạn 5 Hz. History hiển thị dùng min/max envelope tối đa 20000 điểm, còn dữ liệu gốc mới nhất vẫn được giữ cho DSP.
+- Khi bắt đầu live, app đóng pyserial của GUI để helper sở hữu COM. Khi dừng, helper bị kết thúc, GUI retry mở lại COM tối đa 10 lần cách nhau 100 ms rồi gửi lệnh STOP; do đó có thể đo lại mà không rút USB.
+- Visible-GUI smoke 10 s ở ADC 140 kSPS đạt khoảng 9.45 s dữ liệu sau startup, `warning=0`, `error=''`, worker vẫn chạy. Smoke start/stop/restart tiếp theo: run 1 đạt 4.213 s và run 2 đạt 4.476 s trong hai cửa sổ 5 s; cả hai `ok=True`, sau mỗi lần dừng `serial_open=True`, không cần cắm lại USB.
+- `py_compile signal_analyzer.py stream_reader_process.py` đạt; `python -m unittest test_signal_analysis.py` đạt 4/4.
