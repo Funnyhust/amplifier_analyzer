@@ -43,12 +43,10 @@ static inline uint8_t *adc_stream_usb_frame(uint8_t index)
 
 static inline void adc_stream_pulse_convst(void)
 {
-    stream_dev->convst_port->BRR = stream_dev->convst_pin;
-    __NOP();
-    __NOP();
+    /* Callers already hold the tied RD/CONVST net LOW. The APB GPIO write
+     * plus two core cycles keep HIGH beyond the 15 ns minimum, while avoiding
+     * a duplicate BRR write in the critical two-word serial path. */
     stream_dev->convst_port->BSRR = stream_dev->convst_pin;
-    __NOP();
-    __NOP();
     __NOP();
     __NOP();
 }

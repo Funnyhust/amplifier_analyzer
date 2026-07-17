@@ -550,3 +550,11 @@ Chưa đạt 200 kSPS continuous. Giới hạn hiện tại không phải do ri�
 - Root cause là main khóa toàn bộ IRQ khi snapshot ring counter trước mỗi frame USB. Hai counter 32-bit đã aligned và được truy cập nguyên tử trên Cortex-M3; đường ring là single-producer/single-consumer nên bỏ global IRQ mask và dùng snapshot không khóa.
 - Soak ADC 120 kSPS + DAC update 50 kHz trong 30.000 s: host nhận `3599360` mẫu (`119978.7 SPS`), 7030 frame; CRC/sequence/junk lỗi 0; firmware `PRODUCED=3599984, OVERRUN=0, INVALID=0, OVERWRITE=0`; DAC `TX_ERR=0`.
 - Build production: RAM 18328/20480 byte (89.5%), flash 57012/65536 byte (87.0%). App live stream nâng lên 120 kSPS.
+
+### 15.11 Checkpoint 130 kSPS
+
+- Quét timing nội bộ cho thấy bản 120 kSPS cũ sạch ở 122 kSPS nhưng bắt đầu overrun từ 124 kSPS. Critical path còn ghi LOW lặp lại và chèn 6 NOP cho mỗi xung RD/CONVST.
+- Hai call-site đã giữ RD/CONVST LOW trước khi pulse. Bỏ GPIO BRR dư và giữ 2 NOP sau cạnh HIGH vẫn vượt yêu cầu HIGH tối thiểu 15 ns; strict ADS frame validation tiếp tục báo `INVALID=0`.
+- Sau tối ưu: ADC nội bộ sạch ở 124/126/128/130 kSPS; 135 kSPS bắt đầu có overrun nên chưa được dùng làm checkpoint.
+- Soak ADC 130 kSPS + DAC update 50 kHz trong 30.000 s: host nhận `3896832` mẫu (`129894.4 SPS`), 7611 frame; CRC/sequence/junk lỗi 0; firmware `PRODUCED=3897342, OVERRUN=0, INVALID=0, OVERWRITE=0`; DAC `TX_ERR=0`.
+- Build production: RAM 18328/20480 byte (89.5%), flash 56932/65536 byte (86.9%). App live stream nâng lên 130 kSPS.
