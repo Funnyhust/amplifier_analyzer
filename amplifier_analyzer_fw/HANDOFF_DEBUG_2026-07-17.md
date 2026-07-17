@@ -490,3 +490,12 @@ Chưa đạt 200 kSPS continuous. Giới hạn hiện tại không phải do ri�
 - Soak ADC 55 kSPS + DAC sine 200 Hz/update 50 kHz trong 30.004 s: host nhận `1650176` mẫu (`54998.4 SPS`), 6446 frame; CRC/sequence lỗi 0; firmware `PRODUCED=1650392, OVERRUN=0, INVALID=0, OVERWRITE=0`; DAC `TX_ERR=0`.
 - Vin raw `1096..1591`, vẫn đúng sine analog khoảng 0.6 Vpp.
 - App live stream nâng lên 55 kSPS. Đây là checkpoint +10 kSPS đầu tiên sau commit 45 kSPS.
+
+### 15.4 Checkpoint 65 kSPS với DAC 50 kHz
+
+- USB chunk tăng 256 lên 512 mẫu; RAM build khoảng 84.3%. Độ trễ block khoảng 7.88 ms ở 65 kSPS.
+- Thêm DWT telemetry `BUILD_CYC`/`SEND_CYC` vào `ADC_STREAM_STATUS` để tách thời gian đóng frame và USB transmit.
+- SPI1 DAC chuyển từ hai access 8-bit sang một access 16-bit cho mỗi frame MCP4822. CS vẫn bao đúng 16 clock, nhưng giảm polling trong 50000 TIM3 IRQ/s.
+- Soak ADC 65 kSPS + DAC update 50 kHz trong 30.003 s: host nhận `1949184` mẫu (`64966.6 SPS`), 3807 frame; CRC/sequence lỗi 0; firmware `PRODUCED=1950166, OVERRUN=0, INVALID=0, OVERWRITE=0`; DAC `TX_ERR=0`.
+- Vin raw `1096..1592`, xác nhận DAC 16-bit vẫn phát đúng sine. `BUILD_CYC_MAX=314601`, `SEND_CYC_MAX=215592`.
+- App live stream nâng lên 65 kSPS. Đây là checkpoint +10 kSPS thứ hai.

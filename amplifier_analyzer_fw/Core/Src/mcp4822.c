@@ -42,13 +42,9 @@ static uint16_t mcp4822_build_frame_mode(uint8_t channel, uint8_t gain_x2,
 }
 
 static MCP4822_Status_t mcp4822_transmit_frame(uint16_t frame) {
-    uint8_t data[2] = {
-        (uint8_t)((frame >> 8) & 0xFFU),
-        (uint8_t)(frame & 0xFFU),
-    };
-
     MCP4822_CS_PORT->BRR = MCP4822_CS_PIN;
-    HAL_StatusTypeDef hal_status = HAL_SPI_Transmit(&hspi1, data, 2U, 100U);
+    HAL_StatusTypeDef hal_status = HAL_SPI_Transmit(
+        &hspi1, (uint8_t *)&frame, 1U, 100U);
     MCP4822_CS_PORT->BSRR = MCP4822_CS_PIN;
 
     mcp4822_last_frame = frame;
@@ -89,38 +85,25 @@ MCP4822_Status_t mcp4822_write_raw_isr(uint8_t channel, uint8_t gain_x2,
                                         uint16_t code) {
 #if defined(STM32F103xB)
     const uint16_t frame = mcp4822_build_frame(channel, gain_x2, code);
-    const uint8_t high_byte = (uint8_t)(frame >> 8);
-    const uint8_t low_byte = (uint8_t)frame;
     volatile uint32_t guard;
-    volatile uint8_t discard;
+    volatile uint16_t discard;
 
     /*
      * The production sample timer can run at 200 kHz, so HAL_SPI_Transmit()
      * is too expensive inside the ISR. SPI1 belongs exclusively to MCP4822;
-     * perform a bounded two-byte polling transfer and drain RXNE to avoid OVR.
+     * perform one bounded 16-bit transfer and drain RXNE to avoid OVR.
      */
     MCP4822_CS_PORT->BRR = MCP4822_CS_PIN;
 
     guard = 1000U;
     while (((SPI1->SR & SPI_SR_TXE) == 0U) && (--guard != 0U)) {}
     if (guard == 0U) goto spi_error;
-    *(__IO uint8_t *)&SPI1->DR = high_byte;
+    SPI1->DR = frame;
 
     guard = 1000U;
     while (((SPI1->SR & SPI_SR_RXNE) == 0U) && (--guard != 0U)) {}
     if (guard == 0U) goto spi_error;
-    discard = *(__IO uint8_t *)&SPI1->DR;
-    (void)discard;
-
-    guard = 1000U;
-    while (((SPI1->SR & SPI_SR_TXE) == 0U) && (--guard != 0U)) {}
-    if (guard == 0U) goto spi_error;
-    *(__IO uint8_t *)&SPI1->DR = low_byte;
-
-    guard = 1000U;
-    while (((SPI1->SR & SPI_SR_RXNE) == 0U) && (--guard != 0U)) {}
-    if (guard == 0U) goto spi_error;
-    discard = *(__IO uint8_t *)&SPI1->DR;
+    discard = (uint16_t)SPI1->DR;
     (void)discard;
 
     guard = 1000U;

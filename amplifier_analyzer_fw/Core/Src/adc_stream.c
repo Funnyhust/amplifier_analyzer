@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define ADC_STREAM_RING_SIZE 1024U
-#define ADC_STREAM_USB_CHUNK 256U
+#define ADC_STREAM_USB_CHUNK 512U
 #define ADC_STREAM_MAX_FS_HZ 100000U
 
 typedef struct {
@@ -302,6 +302,9 @@ void adc_stream_usb_service(void)
     uint16_t pos;
 
     uint16_t first_sequence_low = 0U;
+    uint32_t build_started;
+    uint32_t send_started;
+    uint32_t elapsed_cycles;
 
     if (stream_running == 0U || usb_output_enabled == 0U ||
         stream_data_ready == 0U) return;
@@ -323,6 +326,7 @@ void adc_stream_usb_service(void)
     fs = stream_stats.requested_fs;
     __enable_irq();
     if (count == 0U) return;
+    build_started = DWT->CYCCNT;
 
     if (usb_sequence_valid != 0U) {
         int16_t delta = (int16_t)(first_sequence_low -
@@ -391,5 +395,14 @@ void adc_stream_usb_service(void)
     frame[13] = (uint8_t)(count >> 8);
     frame[14] = (uint8_t)count;
     frame[pos] = protocol_calculate_crc(&frame[5], payload_len);
+    send_started = DWT->CYCCNT;
+    elapsed_cycles = send_started - build_started;
+    if (elapsed_cycles > stream_stats.usb_build_cycles_max) {
+        stream_stats.usb_build_cycles_max = elapsed_cycles;
+    }
     protocol_send_raw(frame, (uint16_t)(pos + 1U));
+    elapsed_cycles = DWT->CYCCNT - send_started;
+    if (elapsed_cycles > stream_stats.usb_send_cycles_max) {
+        stream_stats.usb_send_cycles_max = elapsed_cycles;
+    }
 }

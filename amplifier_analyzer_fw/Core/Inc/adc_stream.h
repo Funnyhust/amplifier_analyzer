@@ -10,6 +10,8 @@ typedef struct {
     uint32_t invalid_frame;
     uint32_t ring_overwrite;
     uint32_t requested_fs;
+    uint32_t usb_build_cycles_max;
+    uint32_t usb_send_cycles_max;
     uint8_t running;
 } adc_stream_stats_t;
 

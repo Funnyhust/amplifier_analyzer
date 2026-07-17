@@ -146,15 +146,17 @@ void command_parser_execute(char *cmd_line) {
     }
     else if (strcmp(cmd_line, "ADC_STREAM_STATUS") == 0) {
         adc_stream_stats_t stats;
-        char out[160];
+        char out[224];
         adc_stream_get_stats(&stats);
         snprintf(out, sizeof(out),
-                 "DATA:RUN=%u,FS=%lu,PRODUCED=%lu,OVERRUN=%lu,INVALID=%lu,OVERWRITE=%lu\n",
+                 "DATA:RUN=%u,FS=%lu,PRODUCED=%lu,OVERRUN=%lu,INVALID=%lu,OVERWRITE=%lu,BUILD_CYC=%lu,SEND_CYC=%lu\n",
                  stats.running, (unsigned long)stats.requested_fs,
                  (unsigned long)stats.produced,
                  (unsigned long)stats.timer_overrun,
                  (unsigned long)stats.invalid_frame,
-                 (unsigned long)stats.ring_overwrite);
+                 (unsigned long)stats.ring_overwrite,
+                 (unsigned long)stats.usb_build_cycles_max,
+                 (unsigned long)stats.usb_send_cycles_max);
         send_response(out);
     }
     else if (strcmp(cmd_line, "DAC_TEST_STATUS") == 0) {
