@@ -4,6 +4,7 @@
 #include "range_control.h"
 #include "mcp4822.h"
 #include "ads7861.h"
+#include "adc_stream.h"
 #include "config.h"
 #include "protocol.h"
 #include "usbd_cdc_if.h"
@@ -124,6 +125,37 @@ void command_parser_execute(char *cmd_line) {
         snprintf(range_buf, sizeof(range_buf), "DATA:mode=%s,range=%s\n",
                  range_control_get_mode_name(), range_control_get_range_name());
         send_response(range_buf);
+    }
+    else if (strncmp(cmd_line, "ADC_STREAM_START:FS=", 20) == 0) {
+        uint32_t fs = (uint32_t)strtoul(cmd_line + 20, NULL, 10);
+        if (adc_stream_start(fs)) send_response("OK\n");
+        else send_response("ERR:302,ADC_STREAM_CONFIG\n");
+    }
+    else if (strncmp(cmd_line, "ADC_USB_STREAM_START:FS=", 24) == 0) {
+        uint32_t fs = (uint32_t)strtoul(cmd_line + 24, NULL, 10);
+        if (adc_stream_start(fs)) {
+            adc_stream_set_usb_output(1U);
+            send_response("OK\n");
+        } else {
+            send_response("ERR:302,ADC_STREAM_CONFIG\n");
+        }
+    }
+    else if (strcmp(cmd_line, "ADC_STREAM_STOP") == 0) {
+        adc_stream_stop();
+        send_response("OK\n");
+    }
+    else if (strcmp(cmd_line, "ADC_STREAM_STATUS") == 0) {
+        adc_stream_stats_t stats;
+        char out[160];
+        adc_stream_get_stats(&stats);
+        snprintf(out, sizeof(out),
+                 "DATA:RUN=%u,FS=%lu,PRODUCED=%lu,OVERRUN=%lu,INVALID=%lu,OVERWRITE=%lu\n",
+                 stats.running, (unsigned long)stats.requested_fs,
+                 (unsigned long)stats.produced,
+                 (unsigned long)stats.timer_overrun,
+                 (unsigned long)stats.invalid_frame,
+                 (unsigned long)stats.ring_overwrite);
+        send_response(out);
     }
     else if (strcmp(cmd_line, "DAC_TEST_STATUS") == 0) {
         char dac_buf[128];
@@ -429,6 +461,8 @@ void command_parser_execute(char *cmd_line) {
         send_response("OK\n");
     }
     else if (strcmp(cmd_line, "STOP") == 0) {
+        /* Fail-safe: STOP must silence both continuous ADC USB and DAC. */
+        adc_stream_stop();
         test_controller_stop();
         send_response("OK\n");
     } 

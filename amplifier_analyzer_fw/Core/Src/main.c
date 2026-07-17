@@ -26,6 +26,7 @@
 #include "test_controller.h"
 #include "mcp4822.h"
 #include "ads7861.h"
+#include "adc_stream.h"
 #include "config.h"
 #include "usbd_cdc_if.h"
 #include <math.h>
@@ -128,6 +129,7 @@ int main(void)
       ads7861_self_test_parse() != ADS7861_OK) {
     Error_Handler();
   }
+  adc_stream_init(&g_ads7861);
 #endif
 #endif
   /* USER CODE END 2 */
@@ -140,6 +142,7 @@ int main(void)
     /* USER CODE BEGIN 3 */
     /* USB ISR only queues complete lines; commands execute in thread context. */
     command_parser_process();
+    adc_stream_usb_service();
     test_controller_service();
 
 #if (ACTIVE_MODE == MODE_TEST_DAC)
@@ -416,8 +419,8 @@ static void MX_SPI2_Init(void)
   /* ADS7861 serial data is valid on the falling clock edge. */
   hspi2.Init.CLKPhase = SPI_PHASE_2EDGE;
   hspi2.Init.NSS = SPI_NSS_SOFT;
-  /* APB1=36 MHz: /32 = 1.125 MHz, validated with strict ADC frames. */
-  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
+  /* Stage-3 streaming qualification: APB1=36 MHz, /4 = 9 MHz. */
+  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
   hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;

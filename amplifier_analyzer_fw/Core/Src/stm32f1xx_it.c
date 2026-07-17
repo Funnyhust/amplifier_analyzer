@@ -23,6 +23,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "test_controller.h"
+#include "adc_stream.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -210,6 +211,16 @@ void USB_LP_CAN1_RX0_IRQHandler(void)
 void TIM3_IRQHandler(void)
 {
   test_controller_dac_timer_irq();
+}
+
+void TIM2_IRQHandler(void)
+{
+  adc_stream_timer_irq();
+}
+
+void DMA1_Channel4_IRQHandler(void)
+{
+  adc_stream_dma_irq();
 }
 
 /* USER CODE BEGIN 1 */

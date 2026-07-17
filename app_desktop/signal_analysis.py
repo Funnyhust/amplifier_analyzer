@@ -200,18 +200,26 @@ def analyze_channel(
     fit = _sine_fit(values, fs, fit_frequency)
 
     saturation = False
+    raw_span = None
     if raw_codes is not None:
         raw = np.asarray(raw_codes)
         saturation = bool(np.any(raw <= 1) or np.any(raw >= ADC_MAX_CODE - 1))
+        raw_span = float(np.max(raw) - np.min(raw)) if raw.size else 0.0
 
     clipping = saturation
-    if not clipping and vpp > 0.0 and values.size >= 8:
+    # Ignore quantized noise/near-flat channels, and require a longer plateau
+    # than the repeated codes naturally produced near a sampled sine peak.
+    plateau_eligible = raw_span is None or raw_span >= ADC_MAX_CODE * 0.01
+    if (not clipping and plateau_eligible and vpp > 0.0 and
+            values.size >= 10):
         edge_band = max(vpp * 0.002, 1e-9)
         near_top = np.abs(values - vmax) <= edge_band
         near_bottom = np.abs(values - vmin) <= edge_band
-        # Two equal extrema are normal at low samples/cycle; require a plateau.
-        top_run = near_top[:-2] & near_top[1:-1] & near_top[2:]
-        bottom_run = near_bottom[:-2] & near_bottom[1:-1] & near_bottom[2:]
+        # Four repeated extrema can occur from ADC/DAC quantization.
+        top_run = (near_top[:-4] & near_top[1:-3] & near_top[2:-2] &
+                   near_top[3:-1] & near_top[4:])
+        bottom_run = (near_bottom[:-4] & near_bottom[1:-3] &
+                      near_bottom[2:-2] & near_bottom[3:-1] & near_bottom[4:])
         clipping = bool(np.any(top_run) or np.any(bottom_run))
 
     phase = fit[2] if fit else None

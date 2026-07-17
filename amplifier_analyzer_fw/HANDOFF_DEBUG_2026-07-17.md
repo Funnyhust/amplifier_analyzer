@@ -376,3 +376,108 @@ Kết quả test trực tiếp COM4 sau khi nạp production:
 App hiện dùng các block hữu hạn mới lặp lại khoảng mỗi 50 ms, không phải luồng ADC liên tục không khe hở. Mỗi block được tính độc lập và thay thế snapshot trên đồ thị. Muốn đạt 200 kSPS thật, lấy mẫu đều và streaming liên tục cần bước kiến trúc tiếp theo bằng timer/DMA; không được coi đường blocking hiện tại là 200 kSPS production.
 
 Kiểm tra bổ sung ở `2000 Hz, 300 mV peak` cho thấy timer DAC 200 kHz vẫn làm app timeout dù oscilloscope còn thấy sine. Đã giới hạn đường cập nhật DAC bằng ngắt ở khoảng 50 kHz; cấu hình này dùng 25 điểm/chu kỳ. Kết quả 3/3 `START OK`, `fs_actual` khoảng 19.7–19.8 kSPS, Vin khoảng 598–599 mVpp, DAC `FREQ_HZ=2000, UPDATE_HZ=50000, RUN=1, TX_ERR=0`. Frame mẫu 512 byte có header `AA BB 03 02 00` và CRC khớp.
+
+App desktop đã đổi từ việc thay thế một block sang đồ thị rolling giữ 20 giây dữ liệu mẫu gần nhất. Bản đầu gắn timestamp wall clock và để hở idle gap nhưng không phù hợp cách người dùng cần quan sát; bản hiện tại nén khoảng nghỉ command/USB và đặt block kế tiếp ngay sau block trước theo `1/fs_actual`. RMS/frequency/gain/phase vẫn tính trên block liền mạch mới nhất, còn CSV/JSON chứa các mẫu đang giữ trong cửa sổ 20 giây sample-time. Đã qua `py_compile`, 4/4 unit test phân tích và smoke test offscreen; biên hai block liên tiếp cách đúng 50 us ở 20 kSPS.
+
+## 13. Continuous acquisition bằng TIM2 + SPI2 DMA + USB sequence stream
+
+Việc nối các block `START/GET_SAMPLES` cũ tạo gãy pha vì ADC dừng trong lúc command/USB chạy. Đã thay đường live của app bằng acquisition liên tục thật:
+
+- SPI2 tăng theo checkpoint: 2.25 MHz đạt 500/500 strict frame; 4.5 MHz đạt 1000/1000; 9 MHz đạt 2000/2000. Chốt 9 MHz, không ép lên 18 MHz.
+- Thêm `adc_stream.c/.h`: TIM2 tạo sample tick, DMA1 Channel 4/5 nhận/phát SPI2, ring buffer lưu Vin/Vout cùng sample sequence.
+- Quét core DMA: 10/25/50 kSPS không invalid khi chưa tải USB; 75/100 kSPS thất bại. Khi DAC 50 kHz chạy song song, 40 kSPS đạt 5 giây với overrun/invalid bằng 0; 50 kSPS gây CPU/USB starvation.
+- Thêm frame USB type `0x01`, payload gồm `first_sequence`, `fs`, `sample_count`, sau đó là Vin/Vout big-endian và CRC XOR.
+- Quét end-to-end USB: 20, 25, 30 kSPS không thiếu sequence/CRC; 35 kSPS mất 61 mẫu trong 200 frame. Chốt production checkpoint hiện tại ở 30 kSPS.
+- App dùng `LiveStreamWorker`, kiểm tra CRC và sequence trước khi append, gom 512 mẫu mỗi UI update, rolling 20 giây sample-time. Không còn vòng `START/GET_RESULT/GET_SAMPLES` cho live display.
+- Soak thật 10.5 giây: PC nhận 307712 mẫu, sequence `0..307711`, không lỗi worker; firmware sau test báo `PRODUCED=307784, OVERRUN=0, INVALID=0, OVERWRITE=0`.
+- Đồ thị refresh tối đa 10 Hz, pyqtgraph peak-downsampling/clip-to-view để có thể giữ 600000 mẫu (20 giây ở 30 kSPS) mà không nghẽn GUI. DSP dùng Fs stream thực 30 kSPS.
+
+Full `SignalAnalyzerApp` đã được chạy offscreen với COM4 thật trong 3.5 giây: rolling history giữ 97280 mẫu/190 UI block, thời gian cuối 3.2426 s, mọi `dt` nằm quanh `33.333333 us`, communication OK, DSP nhận 30000 SPS và start/stop sạch. Đã sửa lỗi block mới từng ghi đè curve rolling: trong stream, `handle_samples()` chỉ làm DSP; rolling buffer là nơi duy nhất cập nhật curve/export. Khi bắt đầu live hardware, trường Fs trên UI tự chuyển về 30000 SPS để không hiển thị 200000 gây hiểu nhầm.
+
+Checkpoint phần mềm/hardware tự động đã hoàn tất. Người dùng chỉ còn mở lại app và xác nhận trực quan waveform trên màn hình thật. Không được quảng cáo 200 kSPS: mức đã chứng minh end-to-end hiện tại là 30 kSPS.
+
+### 13.1 Sửa gãy dạng sóng dù sequence USB liên tục
+
+Quan sát GUI cho thấy sine vẫn có các cusp/điểm quay đầu dù sequence không thiếu. Sequence ban đầu chỉ đếm lần ISR được phục vụ, không phát hiện update-event timer bị coalesced khi USB priority cao giữ CPU quá chu kỳ 33 us. Đồng thời TIM2 có thể lấy mẫu đúng lúc MCP4822 đang settling.
+
+Đã sửa:
+
+- Khi TIM2/TIM3 có cùng rate, TIM2 được khởi tạo lệch nửa chu kỳ TIM3 để ADS7861 lấy mẫu giữa hai lần DAC update (khoảng 16.7 us sau DAC ở 30 kHz).
+- DMA1 Channel 4, TIM2 và TIM3 chuyển priority 0; USB chuyển priority 2. Ở rate 30 kHz đã qualified, timer/DMA giữ timing trước USB thay vì để USB làm mất tick vật lý.
+- Test 64000 mẫu sau sửa: host nhận khoảng 29.74 ksample/s, sine suy ra đúng 200.0 Hz, `DX_MAX=15 code`, không có bước >20 code, sequence/CRC lỗi 0; firmware `OVERRUN=0, INVALID=0, OVERWRITE=0`.
+- Sửa false-positive clipping trong app: bỏ plateau test cho kênh gần phẳng dưới 1% full-scale và yêu cầu ít nhất 5 extrema liên tiếp. Test board: CH1 khoảng 0.601 Vpp, 199.65 Hz, CH1/CH2 đều `CLIP=False`, `SAT=False`; unit test 4/4 đạt.
+
+### 13.2 Sửa CH1 bị hiển thị khoảng -100 V
+
+Khi AUTO còn ở relay 10 V, app từng áp `adc1_r2_m = 100` cho cả CH1. Đây là sai mapping: ADS B0/Vin là đường trực tiếp, không qua relay, nên luôn phải dùng `adc1_r0_m/c`. Đã cố định CH1 dùng range 0; chỉ CH2/Vout dùng range relay hiện hành. Xác nhận board với raw Vin `1102..1594`: scale đúng là `-1.155..-0.554 V`, trong khi scale sai x100 cho `-115.5..-55.4 V`. Giá trị âm range-0 là điện áp vi sai `CHB0+ - 2.5 V`; node DAC vật lý với cấu hình 300 mV peak vẫn là khoảng `1.35..1.95 V`.
+
+Theo yêu cầu UI, CH1/Vin hiện được trình bày dưới dạng điện áp node so với GND: sau calibration differential, app cộng lại VCM 2.5 V. Với raw `1102..1594`, kết quả hiển thị là `1.345..1.946 V`, Vpp vẫn `0.601 V`. Thay đổi DC convention này không ảnh hưởng Vrms AC, frequency, gain hoặc phase. Unit test 4/4 đạt.
+
+## 14. Sửa reconnect sau stream và điều khiển cửa sổ xem
+
+Root cause reconnect: command firmware `STOP` cũ chỉ gọi `test_controller_stop()` để dừng DAC, không gọi `adc_stream_stop()`. Nếu worker lỗi hoặc app đóng giữa stream, STM32 tiếp tục gửi frame nhị phân. Khi mở COM lại, `PING` đọc trúng binary backlog và thất bại cho tới khi USB CDC bị reset bằng cách rút cáp.
+
+Đã sửa app độc lập với firmware:
+
+- `stop_device_safely()` gửi `ADC_STREAM_STOP`, drain byte tới ACK, reset input buffer, sau đó gửi `STOP` và reset cả input/output.
+- Normal stop, worker error, disconnect và closeEvent đều đi qua cleanup này; closeEvent gọi `LiveStreamWorker.request_stop()` thay vì chỉ `cancel_read()`.
+- `serial_send_cmd` decode với replacement và không cố in binary ra console theo encoding hệ thống.
+- Test backlog nhị phân chủ động: sau khi để stream tích frame cũ, cleanup/đóng/mở COM trả `PING OK` mà không rút USB.
+- Test reconnect nhanh 8 vòng: cả 8 vòng mở lại đều `PING OK`; vòng cuối có sequence loss 1 mẫu nhưng cleanup vẫn phục hồi kết nối đúng.
+
+Điều khiển view:
+
+- Thêm `Follow live data / Bám theo dữ liệu mới`.
+- Thêm `View window` từ 0.05 đến 20 s, mặc định 2 s.
+- Bỏ chọn Follow để app không ép X-range; người dùng có thể zoom/pan tự do bằng pyqtgraph. Ring buffer vẫn giữ tối đa 20 s.
+
+Firmware cũng đã patch để command `STOP` gọi `adc_stream_stop()` fail-safe và build production thành công (RAM 13656, flash 55660), nhưng chưa flash được patch STOP này: J-Link driver bị treo sau nhiều process upload chồng nhau; Windows từ chối restart PnP do thiếu quyền. App cleanup đã được test hoạt động với firmware hiện còn trên board. Cần rút/cắm lại riêng J-Link rồi upload firmware build hiện tại; không cần rút USB COM4 để app reconnect.
+
+## 15. Khảo sát nâng sample rate sau khi ổn định app
+
+Benchmark end-to-end trên firmware hiện còn ở board, DAC sine 200 Hz chạy đồng thời, 200 USB frame mỗi mức:
+
+| Fs yêu cầu | Host rate | Sequence missing | Firmware overrun | Kết luận |
+|---:|---:|---:|---:|---|
+| 30 kSPS | 29.71 kSPS | 0 | 0 | đạt |
+| 32 kSPS | 31.68 kSPS | 8 | 8 | không đạt |
+| 34 kSPS | 33.55 kSPS | 110 | 111 | không đạt |
+| 35 kSPS | 34.41 kSPS | 181 | 182 | không đạt |
+| 36 kSPS | 35.35 kSPS | 199 | 200 | không đạt |
+
+Nguyên nhân bottleneck đầu tiên đã xác định trong `adc_stream_usb_service()`: firmware tắt toàn bộ IRQ trong lúc scan/copy 128 mẫu (512 byte). Ở 30 kSPS chu kỳ là 33.3 us; từ 32 kSPS vùng critical đôi lúc dài hơn một chu kỳ, làm TIM2 đến khi `dma_word_state` còn bận và overrun tăng đúng bằng số sequence bị thiếu.
+
+Đã patch nhưng chưa flash: main loop chỉ tắt IRQ vài lệnh để reserve 128 slot và advance consumer; bulk ring copy chạy khi timer/DMA interrupt vẫn bật. Production build thành công, RAM 13656 bytes, flash 55668 bytes. Cần cắm lại J-Link để nạp rồi quét lại 30–100 kSPS. Trần hiện đã chứng minh trên board vẫn là 30 kSPS; chưa có bằng chứng cho 200 kSPS.
+
+### 15.1 Refactor ISR nhẹ và tăng buffer
+
+Theo yêu cầu giảm công việc trong ngắt, đã refactor offline:
+
+- DMA IRQ word B không parse/status-check/convert Vin-Vout nữa; chỉ ghi `word_a`, `word_b`, sequence low-16 vào raw ring, cập nhật producer counter và set `stream_data_ready` khi đủ block.
+- Parse ADS status, swap A/B, signed conversion, validation, Vin/Vout packing và CRC chuyển sang `adc_stream_usb_service()` trong main context.
+- TIM2 và DMA word-A vẫn phải pulse RD/CONVST và re-arm DMA vì đây là timing hard-real-time của board đang nối chung RD/CONVST; đã thay `HAL_GPIO_WritePin()` bằng direct BRR/BSRR + NOP trong ISR.
+- Ring tăng 512 lên 1024 entry. Entry nén còn 6 byte (`word_a`, `word_b`, `sequence_low`) thay vì data+sequence 8 byte.
+- USB chunk tăng 128 lên 256 mẫu. Main parse trực tiếp vào static USB frame, không tạo mảng copy 1 KB trên stack.
+- Build production đạt: RAM `16224/20480 = 79.2%`, flash `55836/65536 = 85.2%`; app py_compile và unit test 4/4 đạt.
+
+Độ trễ bình thường do chunk 256: 8.53 ms ở 30 kSPS, 2.56 ms ở 100 kSPS, 1.28 ms ở 200 kSPS. Ring 1024 hấp thụ tối đa khoảng 34.1/10.24/5.12 ms tương ứng. Buffer không giảm throughput trung bình: raw hai kênh vẫn cần 120/400/800 kB/s ở 30/100/200 kSPS.
+
+Chưa flash/test được bản này vì J-Link thấy VTref 3.26–3.28 V nhưng không initialize DAP ở cả SWD 1 MHz và 100 kHz, kể cả connect-under-reset. Cần kiểm tra lại GND, SWDIO/PA13, SWCLK/PA14 và NRST rồi nạp/test. Không được coi refactor này đã chạy trên board cho tới khi upload thành công và sequence/overrun stress đạt.
+
+### 15.2 Kết quả sau khi nạp refactor ISR/buffer
+
+J-Link đã kết nối lại và production refactor đã được nạp/test trực tiếp trên COM4:
+
+- `ADC_READ_ONCE` strict đạt `2000/2000`; không lỗi SPI/status/trailing bits.
+- 30 kSPS trong 10.004 s: host nhận 300032 mẫu, CRC/sequence lỗi 0; firmware `OVERRUN=0, INVALID=0, OVERWRITE=0`.
+- Phát hiện stop/start cũ có thể để pending DMA và làm lệch pipeline ADS7861. Đã sửa `adc_stream_stop()` để disable/clear DMA IRQ, drain SPI, xóa pending IRQ; `adc_stream_start()` prime tối đa ba cặp và chỉ start khi có strict-valid frame. Stress 18 lần start/stop ở 30/54/60 kSPS không còn `INVALID`.
+- Tối ưu parse main: kiểm tra status/trailing bits và đổi two's-complement sang transport code trực tiếp, không gọi `ads7861_parse_word()` nhiều lần cho mỗi mẫu.
+- ADC stream khi DAC dừng: 60, 61, 62, 63, 64 kSPS đều sạch 5 s; 64.5 kSPS bắt đầu overrun. Mốc có biên an toàn là 60 kSPS.
+- ADC stream khi DAC sine 200 Hz cập nhật 50 kHz: 35/40/45 kSPS sạch 5 s; 50 kSPS bắt đầu ring overwrite do main/USB không theo kịp.
+- Soak production-load ở ADC 45 kSPS + DAC update 50 kHz trong 30.001 s: host nhận 1349888 mẫu (44994.4 SPS), 5273 frame, CRC/sequence lỗi 0; firmware `PRODUCED=1350111, OVERRUN=0, INVALID=0, OVERWRITE=0`; DAC `TX_ERR=0`.
+- Vin raw trong soak là `1095..1591`, phù hợp sine khoảng 0.6 Vpp đã xác nhận bằng oscilloscope.
+- App `LiveStreamWorker.STREAM_FS` đã nâng từ 30 kSPS lên mốc đã chứng minh 45 kSPS.
+
+Build cuối: RAM `16224/20480 = 79.2%`, flash khoảng `55900/65536 = 85.3%`.
+
+Chưa đạt 200 kSPS continuous. Giới hạn hiện tại không phải do riêng core 72 MHz hoặc riêng SPI: kiến trúc còn TIM2 IRQ + hai DMA-complete IRQ cho mỗi cặp ADC, đồng thời TIM3 ISR polling SPI1 tới 50 kHz. Muốn tiến gần 200 kSPS phải thay đường ADC bằng timer-generated RD/CONVST và circular/double-buffer DMA (IRQ theo nửa/full buffer), đồng thời chuyển DAC sang SPI1 DMA/timer trigger hoặc giảm update IRQ; sau đó mới tăng SPI2 và benchmark lại. Tăng ring tiếp chỉ kéo dài thời gian trước overwrite, không sửa throughput trung bình.

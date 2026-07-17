@@ -29,12 +29,8 @@ void HAL_PCD_MspInit(PCD_HandleTypeDef* pcdHandle)
     __HAL_RCC_USB_CLK_ENABLE();
 
     /* Peripheral interrupt init */
-    /*
-     * USB must preempt the 200 kHz TIM3 DAC update interrupt.  Cortex-M
-     * priorities are inverted (a smaller number is higher priority); using 7
-     * here while TIM3 used 2 allowed the DAC tick to starve CDC completely.
-     */
-    HAL_NVIC_SetPriority(USB_LP_CAN1_RX0_IRQn, 1, 0);
+    /* DMA/timer sampling is priority 0; USB runs in the remaining margin. */
+    HAL_NVIC_SetPriority(USB_LP_CAN1_RX0_IRQn, 2, 0);
     HAL_NVIC_EnableIRQ(USB_LP_CAN1_RX0_IRQn);
   }
 }
