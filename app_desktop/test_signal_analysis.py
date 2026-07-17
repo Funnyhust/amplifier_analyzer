@@ -88,7 +88,7 @@ class SamplingQualityTests(unittest.TestCase):
         np.testing.assert_allclose(vout, raw_adc_to_volts(raw) * 100.0)
 
     def test_dut_range_nominal_scale_mapping(self):
-        self.assertEqual(DUT_RANGE_DEFAULT_SCALES, (0.1, 1.0, 3.0))
+        self.assertEqual(DUT_RANGE_DEFAULT_SCALES, (-0.1, -1.0, -3.0))
         raw = np.array([1024, 2048, 3072])
         base = raw_adc_to_volts(raw)
         for scale in DUT_RANGE_DEFAULT_SCALES:

@@ -627,3 +627,10 @@ Chưa đạt 200 kSPS continuous. Giới hạn hiện tại không phải do ri�
 - App dùng constant `DUT_RANGE_DEFAULT_SCALES=(0.1,1.0,3.0)` cho cả khởi tạo UI và Reset Defaults. Firmware `calibration_reset()` dùng cùng ba giá trị.
 - Unit test mapping mới đạt; tổng 7/7 test app đạt. Production build/nạp J-Link thành công, không thay đổi RAM/flash đáng kể.
 - Đã chạy `RESET_CALIB`, `SAVE_CALIB` và đọc lại flash qua COM4: `adc2_r0_m=0.100000`, `adc2_r1_m=1.000000`, `adc2_r2_m=3.000000`; tất cả offset bằng 0.
+
+### 15.21 Bù dấu đảo và xác minh raw theo relay
+
+- Schematic xác nhận CH2 là đường AC-coupled/inverting: C22 1uF chặn DC, R26 10k vào chân âm U4A, chân dương ở VCM 1.65V, feedback được chọn bởi RL1/RL2/RL3. Vì vậy raw CH2 quanh midpoint là điện áp vi sai đã đảo dấu và không còn DC offset DUT.
+- Đo cùng cấu hình 200 Hz/140 kSPS, 4096 mẫu mỗi relay: dải 0.3V có 1882 mẫu rail; 3.3V có 263 mẫu rail; 10V có 0 mẫu rail. Dải 10V raw base `-0.6531..+0.8386V`; scale độ lớn x3 cho `-1.9592..+2.5159V`, chứng minh x3 đã chạy và không clipping.
+- Để khôi phục cực tính DUT, nominal scale đổi thành `-0.1/-1/-3`; dấu âm chỉ bù U4A đảo. UI/CSV ghi rõ CH2 là `Vout AC`, vì offset DC không thể phục hồi qua C22.
+- App 7/7 test đạt. Firmware production đã build/nạp J-Link; `RESET_CALIB` + `SAVE_CALIB` và `GET_CALIB` xác nhận flash là `adc2_r0_m=-0.100000`, `adc2_r1_m=-1.000000`, `adc2_r2_m=-3.000000`.

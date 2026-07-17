@@ -1148,7 +1148,9 @@ class SignalAnalyzerApp(QMainWindow):
         self.plot_osc.showGrid(x=True, y=True); self.plot_osc.addLegend()
         self.plot_osc.setLabel('left', 'Voltage', 'V'); self.plot_osc.setLabel('bottom', 'Time', 's')
         self.curve_ch1 = self.plot_osc.plot(pen=pg.mkPen(self.ch1_color, width=2), name="CH1 (Vin)")
-        self.curve_ch2 = self.plot_osc.plot(pen=pg.mkPen(self.ch2_color, width=2), name="CH2 (Vout)")
+        self.curve_ch2 = self.plot_osc.plot(
+            pen=pg.mkPen(self.ch2_color, width=2), name="CH2 (Vout AC)"
+        )
         self.curve_ch1.setDownsampling(auto=True, method="peak")
         self.curve_ch2.setDownsampling(auto=True, method="peak")
         self.curve_ch1.setClipToView(True)
@@ -1189,7 +1191,9 @@ class SignalAnalyzerApp(QMainWindow):
             "Frequency", "Period", "Noise RMS", "Clipping / Saturation",
         ]
         self.channel_table = QTableWidget(len(self.channel_metric_names), 3)
-        self.channel_table.setHorizontalHeaderLabels(["Metric", "CH1 Vin", "CH2 Vout"])
+        self.channel_table.setHorizontalHeaderLabels(
+            ["Metric", "CH1 Vin", "CH2 Vout (AC)"]
+        )
         self.channel_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.channel_table.verticalHeader().setVisible(False)
         for row, name in enumerate(self.channel_metric_names):
@@ -1516,7 +1520,7 @@ class SignalAnalyzerApp(QMainWindow):
         self.combo_theme.blockSignals(False)
 
         self.channel_table.setHorizontalHeaderLabels([
-            self.tr("Metric"), "CH1 Vin", "CH2 Vout"
+            self.tr("Metric"), "CH1 Vin", "CH2 Vout (AC)"
         ])
         for row, source in enumerate(self.channel_metric_names):
             self.channel_table.setItem(row, 0, QTableWidgetItem(self.tr(source)))
@@ -2289,7 +2293,9 @@ class SignalAnalyzerApp(QMainWindow):
             if self.chk_export_raw.isChecked():
                 with open(csv_path, mode='w', newline='', encoding="utf-8") as f:
                     writer = csv.writer(f)
-                    writer.writerow(["Time (s)", "CH1 Vin (V)", "CH2 Vout (V)"])
+                    writer.writerow(
+                        ["Time (s)", "CH1 Vin (V)", "CH2 Vout AC (V)"]
+                    )
                     for i in range(len(self.last_raw_ch1)):
                         writer.writerow([self.last_raw_time[i], self.last_raw_ch1[i], self.last_raw_ch2[i]])
                 exported_paths.append(csv_path)
