@@ -149,6 +149,44 @@ def raw_adc_to_volts(
     return base_volts * float(scale) + float(offset_mv) / 1000.0
 
 
+def downsample_extrema_indices(channels, max_points: int) -> np.ndarray:
+    """Select real, time-ordered extrema shared by multiple channels.
+
+    The returned indices always reference original samples. This avoids the
+    false ramps produced by pairing a bucket minimum with its start time and a
+    bucket maximum with its end time when those extrema occurred in the
+    opposite order.
+    """
+    arrays = [np.asarray(channel) for channel in channels]
+    if not arrays:
+        return np.array([], dtype=np.int64)
+    count = arrays[0].size
+    if any(channel.size != count for channel in arrays):
+        raise ValueError("all channels must contain the same number of samples")
+    if count <= max_points:
+        return np.arange(count, dtype=np.int64)
+
+    extrema_per_group = 2 * len(arrays)
+    group_limit = max(1, int(max_points) // extrema_per_group)
+    bucket = int(np.ceil(count / float(group_limit)))
+    full_groups = count // bucket
+    used = full_groups * bucket
+    bases = np.arange(full_groups, dtype=np.int64) * bucket
+    selected = []
+
+    for channel in arrays:
+        if full_groups:
+            grouped = channel[:used].reshape(full_groups, bucket)
+            selected.append(bases + grouped.argmin(axis=1))
+            selected.append(bases + grouped.argmax(axis=1))
+        if used < count:
+            tail = channel[used:]
+            selected.append(np.array([used + int(tail.argmin())]))
+            selected.append(np.array([used + int(tail.argmax())]))
+
+    return np.unique(np.concatenate(selected)).astype(np.int64, copy=False)
+
+
 def _positive_zero_crossing_frequency(samples: np.ndarray, fs: float) -> float:
     centered = samples - np.mean(samples)
     indices = np.flatnonzero((centered[:-1] <= 0.0) & (centered[1:] > 0.0))

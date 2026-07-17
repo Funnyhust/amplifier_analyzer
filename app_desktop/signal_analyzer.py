@@ -27,6 +27,7 @@ from signal_analysis import (
     analyze_channel,
     analyze_dut,
     calculate_sampling_quality,
+    downsample_extrema_indices,
     evaluate_pass_fail,
     raw_adc_to_volts,
 )
@@ -1943,29 +1944,12 @@ class SignalAnalyzerApp(QMainWindow):
             plot_ch1 = self.last_raw_ch1
             plot_ch2 = self.last_raw_ch2
             if plot_t.size > PLOT_MAX_POINTS:
-                # Preserve local extrema instead of handing millions of raw
-                # points to pyqtgraph. Two envelope points per bucket are more
-                # useful than a stride that can alias high-frequency signals.
-                bucket = int(np.ceil(
-                    plot_t.size / float(PLOT_MAX_POINTS // 2)
-                ))
-                group_count = plot_t.size // bucket
-                used = group_count * bucket
-                grouped_t = plot_t[:used].reshape(group_count, bucket)
-                grouped_ch1 = plot_ch1[:used].reshape(group_count, bucket)
-                grouped_ch2 = plot_ch2[:used].reshape(group_count, bucket)
-                envelope_t = np.empty(group_count * 2, dtype=np.float64)
-                envelope_ch1 = np.empty(group_count * 2, dtype=np.float64)
-                envelope_ch2 = np.empty(group_count * 2, dtype=np.float64)
-                envelope_t[0::2] = grouped_t[:, 0]
-                envelope_t[1::2] = grouped_t[:, -1]
-                envelope_ch1[0::2] = grouped_ch1.min(axis=1)
-                envelope_ch1[1::2] = grouped_ch1.max(axis=1)
-                envelope_ch2[0::2] = grouped_ch2.min(axis=1)
-                envelope_ch2[1::2] = grouped_ch2.max(axis=1)
-                plot_t = envelope_t
-                plot_ch1 = envelope_ch1
-                plot_ch2 = envelope_ch2
+                display_indices = downsample_extrema_indices(
+                    (plot_ch1, plot_ch2), PLOT_MAX_POINTS
+                )
+                plot_t = plot_t[display_indices]
+                plot_ch1 = plot_ch1[display_indices]
+                plot_ch2 = plot_ch2[display_indices]
             self.curve_ch1.setData(plot_t, plot_ch1)
             self.curve_ch2.setData(plot_t, plot_ch2)
             if self.chk_follow_stream.isChecked():
@@ -2004,24 +1988,13 @@ class SignalAnalyzerApp(QMainWindow):
             return
         target_points = 256
         if count > target_points:
-            bucket = int(np.ceil(count / float(target_points // 2)))
-            groups = count // bucket
-            used = groups * bucket
-            r1 = ch1_raw[:used].reshape(groups, bucket)
-            r2 = ch2_raw[:used].reshape(groups, bucket)
-            reduced1 = np.empty(groups * 2, dtype=ch1_raw.dtype)
-            reduced2 = np.empty(groups * 2, dtype=ch2_raw.dtype)
-            reduced1[0::2] = r1.min(axis=1)
-            reduced1[1::2] = r1.max(axis=1)
-            reduced2[0::2] = r2.min(axis=1)
-            reduced2[1::2] = r2.max(axis=1)
-            indices = np.empty(groups * 2, dtype=np.float64)
-            indices[0::2] = np.arange(groups, dtype=np.float64) * bucket
-            indices[1::2] = indices[0::2] + (bucket - 1)
-            ch1_raw = reduced1
-            ch2_raw = reduced2
+            indices = downsample_extrema_indices(
+                (ch1_raw, ch2_raw), target_points
+            )
+            ch1_raw = ch1_raw[indices]
+            ch2_raw = ch2_raw[indices]
         else:
-            indices = np.arange(count, dtype=np.float64)
+            indices = np.arange(count, dtype=np.int64)
         range_index = self.active_range_index(device_result)
         ch1 = raw_adc_to_volts(
             ch1_raw,

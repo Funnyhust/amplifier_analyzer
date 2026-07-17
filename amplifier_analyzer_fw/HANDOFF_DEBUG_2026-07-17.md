@@ -606,3 +606,10 @@ Chưa đạt 200 kSPS continuous. Giới hạn hiện tại không phải do ri�
 - Chuyển control dải ADC sang group riêng `Dải đầu vào đo DUT`, có nút `Áp dụng dải ADC` riêng. Nút `Áp dụng cấu hình` của DAC/tần số lấy mẫu và Bode sweep không còn gửi lệnh `SET_RANGE`.
 - Dải user đã áp dụng được lưu trong `app_settings.json`; khi kết nối lại, app khôi phục chính dải manual này trước khi đo. Quy đổi volt CH2 dùng active range firmware trả về, không suy ra từ tần số/biên độ/offset của DAC.
 - Hardware check COM4 xác nhận cả ba lệnh trả lần lượt `MANUAL/0.3V`, `MANUAL/3.3V`, `MANUAL/10V`. Independence check: đặt active `3.3V`, đổi combo pending sang `0.3V`, sau đó áp dụng cấu hình DAC; `GET_RANGE` vẫn là `MANUAL/3.3V`.
+
+### 15.18 Sửa waveform răng cưa giả trên app
+
+- Ảnh app báo `Fs=140000 SPS`, `dt=7.14 us`, tín hiệu 200 Hz có khoảng 700 mẫu/chu kỳ; do đó waveform răng cưa không phải alias hay thiếu sample rate.
+- Root cause nằm ở hai tầng decimation hiển thị: code cũ lấy min/max trong bucket nhưng gán min vào timestamp đầu bucket và max vào timestamp cuối bucket, bất kể thứ tự cực trị thực. Việc này tạo ramp/cạnh đứng giả dù raw ADC và oscilloscope đúng.
+- Thêm `downsample_extrema_indices()`: lấy chỉ số thật của min/max cho cả CH1/CH2, hợp nhất và sắp theo thời gian; đồ thị chỉ dùng các cặp timestamp/value nguyên bản. Cả giảm 4096 xuống tối đa 256 điểm/block và giới hạn history 20000 điểm đều dùng hàm này. DSP/FFT vẫn dùng raw block, không bị decimate.
+- `py_compile` đạt; unit test tăng từ 4 lên 5 và đạt 5/5, gồm test xác nhận extrema của hai kênh giữ đúng vị trí thời gian thật.

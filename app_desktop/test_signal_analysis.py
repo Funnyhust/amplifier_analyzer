@@ -7,6 +7,7 @@ from signal_analysis import (
     analyze_channel,
     analyze_dut,
     calculate_sampling_quality,
+    downsample_extrema_indices,
     evaluate_pass_fail,
     raw_adc_to_volts,
 )
@@ -62,6 +63,14 @@ class SamplingQualityTests(unittest.TestCase):
         self.assertAlmostEqual(volts[0], -2.5, places=6)
         self.assertAlmostEqual(volts[1], 0.0, places=6)
         self.assertAlmostEqual(volts[2], 2.5 * 2047 / 2048, places=6)
+
+    def test_display_downsampling_keeps_real_sample_timestamps(self):
+        ch1 = np.array([5, 1, 4, 3, 2, 0, 0, 2, 3, 5, 4, 1])
+        ch2 = np.array([0, 2, 4, 5, 3, 1, 5, 4, 0, 1, 2, 3])
+        indices = downsample_extrema_indices((ch1, ch2), 8)
+        # Two six-sample buckets retain each channel's extrema at their real
+        # positions, sorted in time. No value is moved to a bucket boundary.
+        np.testing.assert_array_equal(indices, [0, 3, 5, 6, 8, 9])
 
 
 if __name__ == "__main__":
