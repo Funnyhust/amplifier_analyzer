@@ -46,31 +46,34 @@ static inline void adc_stream_pulse_convst(void)
     __NOP();
 }
 
-static void adc_stream_dma_begin_pair(void)
+static void adc_stream_dma_configure(void)
 {
     DMA1_Channel4->CCR &= ~DMA_CCR_EN;
     DMA1_Channel5->CCR &= ~DMA_CCR_EN;
     SPI2->CR2 &= ~(SPI_CR2_RXDMAEN | SPI_CR2_TXDMAEN);
     DMA1->IFCR = DMA_IFCR_CGIF4 | DMA_IFCR_CGIF5;
 
-    dma_rx[0] = 0U;
-    dma_rx[1] = 0U;
-    dma_rx[2] = 0U;
-    dma_rx[3] = 0U;
     dma_dummy = 0U;
 
     DMA1_Channel4->CPAR = (uint32_t)&SPI2->DR;
     DMA1_Channel4->CMAR = (uint32_t)dma_rx;
-    DMA1_Channel4->CNDTR = 4U;
     DMA1_Channel4->CCR = DMA_CCR_MINC | DMA_CCR_HTIE | DMA_CCR_PL_1;
 
     DMA1_Channel5->CPAR = (uint32_t)&SPI2->DR;
     DMA1_Channel5->CMAR = (uint32_t)&dma_dummy;
-    DMA1_Channel5->CNDTR = 2U;
     DMA1_Channel5->CCR = DMA_CCR_DIR | DMA_CCR_PL_1;
 
     __HAL_SPI_ENABLE(stream_dev->hspi);
     SPI2->CR2 |= SPI_CR2_RXDMAEN | SPI_CR2_TXDMAEN;
+}
+
+static inline void adc_stream_dma_begin_pair(void)
+{
+    DMA1_Channel4->CCR &= ~DMA_CCR_EN;
+    DMA1_Channel5->CCR &= ~DMA_CCR_EN;
+    DMA1->IFCR = DMA_IFCR_CGIF4 | DMA_IFCR_CGIF5;
+    DMA1_Channel4->CNDTR = 4U;
+    DMA1_Channel5->CNDTR = 2U;
     DMA1_Channel4->CCR |= DMA_CCR_EN;
     DMA1_Channel5->CCR |= DMA_CCR_EN;
 }
@@ -139,6 +142,7 @@ uint8_t adc_stream_start(uint32_t sample_rate_hz)
     }
 
     __HAL_RCC_DMA1_CLK_ENABLE();
+    adc_stream_dma_configure();
     /* Sampling timing must not be stretched by USB frame service. */
     HAL_NVIC_SetPriority(DMA1_Channel4_IRQn, 0U, 0U);
     HAL_NVIC_EnableIRQ(DMA1_Channel4_IRQn);
@@ -221,14 +225,11 @@ static inline void adc_stream_finish_pair(void)
 {
     uint16_t word_a;
     uint16_t word_b;
-    uint32_t guard = 1000U;
     uint32_t write_index;
 
     DMA1->IFCR = DMA_IFCR_CGIF4 | DMA_IFCR_CGIF5;
     DMA1_Channel4->CCR &= ~DMA_CCR_EN;
     DMA1_Channel5->CCR &= ~DMA_CCR_EN;
-    SPI2->CR2 &= ~(SPI_CR2_RXDMAEN | SPI_CR2_TXDMAEN);
-    while ((SPI2->SR & SPI_SR_BSY) != 0U && --guard != 0U) {}
 
     word_a = (uint16_t)((((uint16_t)dma_rx[0] << 8) | dma_rx[1]) << 1);
     word_b = (uint16_t)((((uint16_t)dma_rx[2] << 8) | dma_rx[3]) << 1);

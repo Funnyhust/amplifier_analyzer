@@ -518,3 +518,11 @@ Chưa đạt 200 kSPS continuous. Giới hạn hiện tại không phải do ri�
 - Đo waveform ở 85 kSPS: FFT peak `200.062 Hz`, crossing hysteresis `200.01 Hz`, Vin raw `1096..1590`; xác nhận DAC vẫn đúng 200 Hz.
 - Soak ADC 85 kSPS + DAC update 50 kHz trong 30.004 s: host nhận `2549760` mẫu (`84980.1 SPS`), 4980 frame; CRC/sequence lỗi 0; firmware `PRODUCED=2550726, OVERRUN=0, INVALID=0, OVERWRITE=0`; DAC `TX_ERR=0`.
 - App live stream nâng lên 85 kSPS. Đây là checkpoint +10 kSPS thứ tư.
+
+### 15.7 Checkpoint 95 kSPS với DAC 50 kHz
+
+- DMA1 Channel 4/5 và SPI2 DMA request được cấu hình cố định một lần trong `adc_stream_start()`; hot tick chỉ clear flag, reload `CNDTR` và enable channel.
+- Tick kế tiếp commit transfer đã hoàn tất mà không tháo SPI DMA request hay polling BSY. Điều này giảm mạnh thời gian TIM2 ISR/main bị preempt.
+- Soak ADC 95 kSPS + DAC update 50 kHz trong 30.005 s: host nhận `2849280` mẫu (`94961.5 SPS`), 5565 frame; CRC/sequence lỗi 0; firmware `PRODUCED=2850149, OVERRUN=0, INVALID=0, OVERWRITE=0`; DAC `TX_ERR=0`.
+- Vin raw `1096..1591`; `BUILD_CYC_MAX=223614`, `SEND_CYC_MAX=5182`.
+- App live stream nâng lên 95 kSPS. Đây là checkpoint +10 kSPS thứ năm.
