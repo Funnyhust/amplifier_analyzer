@@ -558,3 +558,11 @@ Chưa đạt 200 kSPS continuous. Giới hạn hiện tại không phải do ri�
 - Sau tối ưu: ADC nội bộ sạch ở 124/126/128/130 kSPS; 135 kSPS bắt đầu có overrun nên chưa được dùng làm checkpoint.
 - Soak ADC 130 kSPS + DAC update 50 kHz trong 30.000 s: host nhận `3896832` mẫu (`129894.4 SPS`), 7611 frame; CRC/sequence/junk lỗi 0; firmware `PRODUCED=3897342, OVERRUN=0, INVALID=0, OVERWRITE=0`; DAC `TX_ERR=0`.
 - Build production: RAM 18328/20480 byte (89.5%), flash 56932/65536 byte (86.9%). App live stream nâng lên 130 kSPS.
+
+### 15.12 Checkpoint 140 kSPS
+
+- Refactor pipeline timer: chụp 4 byte DMA đã hoàn tất, lập tức arm conversion/DMA kế tiếp, sau đó mới xử lý mẫu cũ. CPU và SPI được chạy chồng lấp thay vì để SPI chờ parse/store.
+- Dời strict frame validation, đổi two's-complement sang offset-binary và tạo packed-12 từ ISR sang main khi build frame USB. ISR chỉ giữ raw 32-bit và metadata ring, giảm critical interrupt time.
+- ADC nội bộ sạch đến 150 kSPS; 160 kSPS làm main bị starvation nên không được coi là usable.
+- Soak ADC 140 kSPS + DAC update 50 kHz trong 30.000 s: host nhận `4201472` mẫu (`140049.1 SPS`), 8206 frame; CRC/sequence/junk lỗi 0; firmware `PRODUCED=4202421, OVERRUN=0, INVALID=0, OVERWRITE=0`; DAC `TX_ERR=0`.
+- Build production: RAM 18328/20480 byte (89.5%), flash 57172/65536 byte (87.2%). App live stream nâng lên 140 kSPS.

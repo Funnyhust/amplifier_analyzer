@@ -15,7 +15,7 @@ static volatile uint8_t stream_running;
 static volatile uint8_t dma_word_state;
 static volatile uint8_t dma_rx[4];
 static uint8_t dma_dummy;
-static volatile uint32_t transport_ring[ADC_STREAM_RING_SIZE]
+static volatile uint32_t raw_ring[ADC_STREAM_RING_SIZE]
     __attribute__((aligned(4)));
 static volatile uint16_t raw_chunk_sequence[
     ADC_STREAM_RING_SIZE / ADC_STREAM_USB_CHUNK];
@@ -227,37 +227,11 @@ void adc_stream_stop(void)
     }
 }
 
-static inline void adc_stream_finish_pair(void)
+static inline void adc_stream_store_pair(uint16_t word_a, uint16_t word_b,
+                                         uint32_t sample_sequence)
 {
-    uint16_t word_a;
-    uint16_t word_b;
-    uint16_t vin;
-    uint16_t vout;
-    uint32_t packed;
     uint32_t chunk_index;
     uint32_t write_index;
-
-    DMA1->IFCR = DMA_IFCR_CGIF4 | DMA_IFCR_CGIF5;
-    DMA1_Channel4->CCR &= ~DMA_CCR_EN;
-    DMA1_Channel5->CCR &= ~DMA_CCR_EN;
-
-    word_a = (uint16_t)((((uint16_t)dma_rx[0] << 8) | dma_rx[1]) << 1);
-    word_b = (uint16_t)((((uint16_t)dma_rx[2] << 8) | dma_rx[3]) << 1);
-    stream_dev->convst_port->BRR = stream_dev->convst_pin;
-
-    if ((word_a & 0x4000U) != 0U && (word_b & 0x4000U) == 0U) {
-        uint16_t wt = word_a; word_a = word_b; word_b = wt;
-    }
-    if ((word_a & 0xC003U) != 0x0000U ||
-        (word_b & 0xC003U) != 0x4000U) {
-        stream_stats.invalid_frame++;
-        stream_dev->cs_port->BSRR = stream_dev->cs_pin;
-        dma_word_state = 0U;
-        return;
-    }
-    vin = (uint16_t)(((word_b >> 2) & 0x0FFFU) ^ 0x0800U);
-    vout = (uint16_t)(((word_a >> 2) & 0x0FFFU) ^ 0x0800U);
-    packed = ((uint32_t)vin << 12) | (uint32_t)vout;
 
     write_index = ring_write_count & (ADC_STREAM_RING_SIZE - 1U);
     if ((ring_write_count - ring_read_count) >= ADC_STREAM_RING_SIZE) {
@@ -267,25 +241,47 @@ static inline void adc_stream_finish_pair(void)
     if ((write_index & (ADC_STREAM_USB_CHUNK - 1U)) == 0U) {
         chunk_index = write_index / ADC_STREAM_USB_CHUNK;
         raw_chunk_sequence[chunk_index] =
-            (uint16_t)active_sample_sequence;
+            (uint16_t)sample_sequence;
     } else {
         chunk_index = write_index / ADC_STREAM_USB_CHUNK;
     }
     (void)chunk_index;
-    transport_ring[write_index] = packed;
+    raw_ring[write_index] = ((uint32_t)word_a << 16) | word_b;
     ring_write_count++;
     stream_stats.produced++;
     if ((ring_write_count - ring_read_count) >= ADC_STREAM_USB_CHUNK) {
         stream_data_ready = 1U;
     }
 
-    stream_dev->cs_port->BSRR = stream_dev->cs_pin;
-    dma_word_state = 0U;
+}
+
+static inline __attribute__((always_inline)) uint32_t
+adc_stream_transport_code(uint32_t raw)
+{
+    uint16_t word_a = (uint16_t)(raw >> 16);
+    uint16_t word_b = (uint16_t)raw;
+    uint16_t vin;
+    uint16_t vout;
+
+    if ((word_a & 0x4000U) != 0U && (word_b & 0x4000U) == 0U) {
+        uint16_t wt = word_a; word_a = word_b; word_b = wt;
+    }
+    if ((word_a & 0xC003U) != 0x0000U ||
+        (word_b & 0xC003U) != 0x4000U) {
+        stream_stats.invalid_frame++;
+    }
+    vin = (uint16_t)(((word_b >> 2) & 0x0FFFU) ^ 0x0800U);
+    vout = (uint16_t)(((word_a >> 2) & 0x0FFFU) ^ 0x0800U);
+    return ((uint32_t)vin << 12) | (uint32_t)vout;
 }
 
 __attribute__((optimize("O3"))) void adc_stream_timer_irq(void)
 {
+    uint16_t completed_word_a = 0U;
+    uint16_t completed_word_b = 0U;
+    uint32_t completed_sequence = 0U;
     uint32_t next_sequence;
+    uint8_t completed_pair = 0U;
 
     if ((TIM2->SR & TIM_SR_UIF) == 0U) return;
     TIM2->SR &= ~TIM_SR_UIF;
@@ -295,7 +291,18 @@ __attribute__((optimize("O3"))) void adc_stream_timer_irq(void)
     if (dma_word_state != 0U) {
         if (dma_word_state == 2U &&
             (DMA1->ISR & DMA_ISR_TCIF4) != 0U) {
-            adc_stream_finish_pair();
+            DMA1->IFCR = DMA_IFCR_CGIF4 | DMA_IFCR_CGIF5;
+            DMA1_Channel4->CCR &= ~DMA_CCR_EN;
+            DMA1_Channel5->CCR &= ~DMA_CCR_EN;
+            completed_word_a = (uint16_t)(
+                (((uint16_t)dma_rx[0] << 8) | dma_rx[1]) << 1);
+            completed_word_b = (uint16_t)(
+                (((uint16_t)dma_rx[2] << 8) | dma_rx[3]) << 1);
+            completed_sequence = active_sample_sequence;
+            stream_dev->convst_port->BRR = stream_dev->convst_pin;
+            stream_dev->cs_port->BSRR = stream_dev->cs_pin;
+            dma_word_state = 0U;
+            completed_pair = 1U;
         } else {
             stream_stats.timer_overrun++;
             return;
@@ -307,6 +314,12 @@ __attribute__((optimize("O3"))) void adc_stream_timer_irq(void)
     adc_stream_pulse_convst();
     dma_word_state = 1U;
     adc_stream_dma_begin_pair();
+
+    /* Parse/store the completed sample while SPI shifts the next word A. */
+    if (completed_pair != 0U) {
+        adc_stream_store_pair(completed_word_a, completed_word_b,
+                              completed_sequence);
+    }
 }
 
 void adc_stream_dma_irq(void)
@@ -412,10 +425,10 @@ __attribute__((optimize("O3"))) void adc_stream_usb_service(void)
         uint32_t xor_words = 0U;
         uint32_t *destination = (uint32_t *)&frame[pos];
         for (uint16_t i = 0U; i < count; i += 4U) {
-            uint32_t p0 = transport_ring[ring_index + i];
-            uint32_t p1 = transport_ring[ring_index + i + 1U];
-            uint32_t p2 = transport_ring[ring_index + i + 2U];
-            uint32_t p3 = transport_ring[ring_index + i + 3U];
+            uint32_t p0 = adc_stream_transport_code(raw_ring[ring_index + i]);
+            uint32_t p1 = adc_stream_transport_code(raw_ring[ring_index + i + 1U]);
+            uint32_t p2 = adc_stream_transport_code(raw_ring[ring_index + i + 2U]);
+            uint32_t p3 = adc_stream_transport_code(raw_ring[ring_index + i + 3U]);
             uint32_t w0 = (p0 >> 16) | (p0 & 0x00FF00U) |
                           ((p0 & 0xFFU) << 16) | ((p1 >> 16) << 24);
             uint32_t w1 = ((p1 >> 8) & 0xFFU) |
