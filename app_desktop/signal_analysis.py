@@ -64,10 +64,14 @@ class ChannelMetrics:
 class DUTMetrics:
     gain_linear: Optional[float]
     gain_db: Optional[float]
+    target_gain_linear: float
     target_gain_db: float
     gain_error_db: Optional[float]
     gain_tolerance_db: float
     phase_shift_deg: Optional[float]
+    target_phase_deg: float
+    phase_error_deg: Optional[float]
+    phase_tolerance_deg: float
     delay_us: Optional[float]
 
     def to_dict(self) -> dict:
@@ -345,24 +349,38 @@ def analyze_dut(
     target_gain_db: float,
     gain_tolerance_db: float,
     target_frequency_hz: Optional[float] = None,
+    target_phase_deg: float = 0.0,
+    phase_tolerance_deg: float = 180.0,
 ) -> DUTMetrics:
+    target_gain_linear = 10.0 ** (target_gain_db / 20.0)
     if ch1.vrms_ac <= 1e-12:
-        return DUTMetrics(None, None, target_gain_db, None, gain_tolerance_db, None, None)
+        return DUTMetrics(
+            None, None, target_gain_linear, target_gain_db, None,
+            gain_tolerance_db, None, target_phase_deg, None,
+            phase_tolerance_deg, None,
+        )
     gain_linear = ch2.vrms_ac / ch1.vrms_ac
     gain_db = 20.0 * math.log10(gain_linear) if gain_linear > 0.0 else None
     gain_error = gain_db - target_gain_db if gain_db is not None else None
     phase = None
     if ch1.sine_phase_deg is not None and ch2.sine_phase_deg is not None:
         phase = (ch2.sine_phase_deg - ch1.sine_phase_deg + 180.0) % 360.0 - 180.0
+    phase_error = None
+    if phase is not None:
+        phase_error = (phase - target_phase_deg + 180.0) % 360.0 - 180.0
     frequency = target_frequency_hz or ch1.frequency_hz
     delay_us = phase / (360.0 * frequency) * 1e6 if phase is not None and frequency > 0 else None
     return DUTMetrics(
         gain_linear=gain_linear,
         gain_db=gain_db,
+        target_gain_linear=target_gain_linear,
         target_gain_db=target_gain_db,
         gain_error_db=gain_error,
         gain_tolerance_db=gain_tolerance_db,
         phase_shift_deg=phase,
+        target_phase_deg=target_phase_deg,
+        phase_error_deg=phase_error,
+        phase_tolerance_deg=phase_tolerance_deg,
         delay_us=delay_us,
     )
 
@@ -393,6 +411,10 @@ def evaluate_pass_fail(
         failures.append("GAIN_NOT_AVAILABLE")
     elif abs(dut.gain_error_db) > dut.gain_tolerance_db:
         failures.append("GAIN_OUT_OF_TOLERANCE")
+    if dut.phase_error_deg is None:
+        failures.append("PHASE_NOT_AVAILABLE")
+    elif abs(dut.phase_error_deg) > dut.phase_tolerance_deg:
+        failures.append("PHASE_OUT_OF_TOLERANCE")
 
     if frequency_tolerance_pct is not None and target_frequency_hz > 0.0:
         measured = ch1.frequency_hz

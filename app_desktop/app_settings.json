@@ -7,5 +7,12 @@
   "ch2_color": "#00E5FF",
   "show_grid": true,
   "auto_scale": true,
-  "line_width": 2
+  "line_width": 2,
+  "dut_name": "DUT gain 3x",
+  "dut_target_gain_linear": 3.0,
+  "dut_target_phase_deg": 0.0,
+  "dut_gain_tolerance_db": 1.5,
+  "dut_phase_tolerance_deg": 10.0,
+  "dut_frequency_tolerance_pct": 1.0,
+  "dut_input_amplitude_tolerance_pct": 5.0
 }

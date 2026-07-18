@@ -2,6 +2,7 @@ import sys
 import os
 import csv
 import json
+import math
 import pickle
 import socket
 import struct
@@ -63,6 +64,13 @@ DEFAULT_APP_SETTINGS = {
     "show_grid": True,
     "auto_scale": True,
     "line_width": 2,
+    "dut_name": "DUT 1",
+    "dut_target_gain_linear": 1.0,
+    "dut_target_phase_deg": 0.0,
+    "dut_gain_tolerance_db": 1.5,
+    "dut_phase_tolerance_deg": 10.0,
+    "dut_frequency_tolerance_pct": 1.0,
+    "dut_input_amplitude_tolerance_pct": 5.0,
 }
 
 # English source text is used as the stable translation key. Technical units,
@@ -114,8 +122,12 @@ VI_TRANSLATIONS = {
     "Follow live data": "Bám theo dữ liệu mới",
     "View window:": "Cửa sổ hiển thị:",
     "Include raw samples": "Kèm mẫu thô",
-    "Pass/Fail Tolerance": "Dung sai đánh giá đạt/không đạt",
+    "DUT Setup and Pass/Fail": "Cấu hình DUT và đánh giá đạt/không đạt",
+    "DUT Name:": "Tên DUT:",
     "Target Gain:": "Gain mục tiêu:",
+    "Target Gain dB:": "Gain mục tiêu dB:",
+    "Target Phase:": "Pha mục tiêu:",
+    "Phase Tol +/-:": "Dung sai pha +/-:",
     "Gain Tol +/-:": "Dung sai gain +/-:",
     "Frequency Tol +/-:": "Dung sai tần số +/-:",
     "Input Amplitude Tol +/-:": "Dung sai biên độ vào +/-:",
@@ -173,10 +185,15 @@ VI_TRANSLATIONS = {
     "Period": "Chu kỳ",
     "Noise RMS": "Nhiễu RMS",
     "Clipping / Saturation": "Clipping / Bão hòa",
+    "DUT name": "Tên DUT",
+    "Target gain linear": "Gain mục tiêu linear",
     "Target gain dB": "Gain mục tiêu dB",
     "Gain error dB": "Sai số gain dB",
     "Gain tolerance": "Dung sai gain",
     "Phase shift": "Độ lệch pha",
+    "Target phase": "Pha mục tiêu",
+    "Phase error": "Sai số pha",
+    "Phase tolerance": "Dung sai pha",
     "Delay": "Độ trễ",
     "Communication": "Truyền thông",
     "Result / Reasons": "Kết quả / Nguyên nhân",
@@ -369,45 +386,247 @@ def analyze_passive(t, ch1, ch2):
 class SweepWorker(QThread):
     progress = pyqtSignal(int)
     result = pyqtSignal(list, list, list)
+    status = pyqtSignal(str)
+    error = pyqtSignal(str)
     finished = pyqtSignal()
 
-    def __init__(self, parent_app, f_start, f_stop, points, amp):
+    # 140 kSPS is the verified lossless USB-stream rate of the current board.
+    # This is local to Bode acquisition and does not alter firmware or the
+    # sample-rate control used by the other application modes.
+    MAX_ADC_FS = 140000
+    CONFIG_SAMPLES = 256
+    CAPTURE_SAMPLES = 1024
+
+    def __init__(self, parent_app, f_start, f_stop, points, amp,
+                 range_index=2, calibration=(1.0, 0.0, 1.0, 0.0),
+                 dac_gain="X2"):
         super().__init__()
         self.parent_app = parent_app
         self.f_start = f_start
         self.f_stop = f_stop
         self.points = points
         self.amp = amp
+        self.range_index = int(range_index)
+        self.calibration = tuple(float(value) for value in calibration)
+        self.dac_gain = dac_gain
+
+    @classmethod
+    def sample_rate_for_frequency(cls, frequency_hz):
+        """Use dense low-frequency sampling without exceeding firmware Fs."""
+        return min(cls.MAX_ADC_FS,
+                   max(5000, int(round(float(frequency_hz) * 50.0))))
+
+    @staticmethod
+    def _read_exact(connection, size):
+        data = bytearray()
+        while len(data) < size:
+            chunk = connection.read(size - len(data))
+            if not chunk:
+                raise TimeoutError(
+                    f"short Bode stream read: {len(data)}/{size} bytes"
+                )
+            data.extend(chunk)
+        return bytes(data)
+
+    def _send_command(self, command):
+        connection = self.parent_app.serial_conn
+        connection.reset_input_buffer()
+        connection.write(command.encode("ascii"))
+        connection.flush()
+        response = connection.readline().decode(
+            "utf-8", errors="replace"
+        ).strip()
+        if response != "OK":
+            raise RuntimeError(
+                f"{command.strip()} -> {response or 'TIMEOUT'}"
+            )
+
+    def _read_stream_frame(self):
+        connection = self.parent_app.serial_conn
+        while True:
+            if self._read_exact(connection, 1) != b"\xaa":
+                continue
+            header = b"\xaa" + self._read_exact(connection, 4)
+            payload_length = int.from_bytes(header[3:5], "big")
+            expected_length = (
+                10 + 512 * 3 if header[2] == 0x04 else
+                10 + 512 * 4 if header[2] == 0x01 else 0
+            )
+            if header[1] != 0xbb or payload_length != expected_length:
+                continue
+
+            payload = self._read_exact(connection, payload_length)
+            received_crc = self._read_exact(connection, 1)[0]
+            calculated_crc = 0
+            for value in payload:
+                calculated_crc ^= value
+            if received_crc != calculated_crc:
+                raise ValueError(
+                    f"Bode stream CRC mismatch: {received_crc:02X}/"
+                    f"{calculated_crc:02X}"
+                )
+
+            sequence = int.from_bytes(payload[0:4], "big")
+            sample_rate = int.from_bytes(payload[4:8], "big")
+            count = int.from_bytes(payload[8:10], "big")
+            if header[2] == 0x04:
+                values = np.frombuffer(payload[10:], dtype=np.uint8)
+                values = values.reshape(-1, 3).astype(np.uint32)
+                packed = ((values[:, 0] << 16) |
+                          (values[:, 1] << 8) | values[:, 2])
+                ch1_raw = ((packed >> 12) & 0x0FFF).astype(np.uint16)
+                ch2_raw = (packed & 0x0FFF).astype(np.uint16)
+            else:
+                raw = np.frombuffer(payload[10:], dtype=">u2").copy()
+                ch1_raw = raw[0::2]
+                ch2_raw = raw[1::2]
+            if count != ch1_raw.size or count != ch2_raw.size:
+                raise ValueError(
+                    f"Bode stream count mismatch: {count}/"
+                    f"{ch1_raw.size}/{ch2_raw.size}"
+                )
+            return sequence, sample_rate, ch1_raw, ch2_raw
+
+    def _stop_adc_stream(self):
+        """Stop binary streaming and consume data queued before the ASCII ACK."""
+        connection = self.parent_app.serial_conn
+        old_timeout = connection.timeout
+        try:
+            connection.timeout = 0.05
+            connection.write(b"ADC_STREAM_STOP\n")
+            connection.flush()
+            deadline = time.monotonic() + 1.5
+            tail = bytearray()
+            while time.monotonic() < deadline:
+                chunk = connection.read(max(1, connection.in_waiting))
+                if chunk:
+                    tail.extend(chunk)
+                    if b"OK\n" in tail:
+                        return
+                    if len(tail) > 64:
+                        del tail[:-64]
+            raise TimeoutError("ADC_STREAM_STOP acknowledgement timeout")
+        finally:
+            connection.timeout = old_timeout
+            connection.reset_input_buffer()
+
+    def _capture_hardware_point(self, frequency_hz):
+        connection = self.parent_app.serial_conn
+        sample_rate = self.sample_rate_for_frequency(frequency_hz)
+        stream_started = False
+        try:
+            self._send_command("ADC_STREAM_STOP\n")
+            self._send_command("STOP\n")
+            command = (
+                "CONFIG:WAVE=SINE,FREQ={freq},AMP_MV={amp},"
+                "OFFSET_MV=0,DAC_GAIN={gain},FS={fs},SAMPLES={samples}\n"
+            ).format(
+                freq=int(round(frequency_hz)),
+                amp=int(round(self.amp * 1000.0)),
+                gain=self.dac_gain,
+                fs=sample_rate,
+                samples=self.CONFIG_SAMPLES,
+            )
+            self._send_command(command)
+            self._send_command("START\n")
+
+            # Let both the DAC and DUT settle before starting the ADC stream.
+            self.msleep(int(1000.0 * min(0.30,
+                                         max(0.02, 5.0 / frequency_hz))))
+            self._send_command(
+                f"ADC_USB_STREAM_START:FS={sample_rate}\n"
+            )
+            stream_started = True
+
+            # Discard the first complete frame after the stream transition.
+            self._read_stream_frame()
+            ch1_blocks = []
+            ch2_blocks = []
+            actual_fs = None
+            expected_sequence = None
+            sample_count = 0
+            while sample_count < self.CAPTURE_SAMPLES:
+                sequence, frame_fs, ch1_raw, ch2_raw = (
+                    self._read_stream_frame()
+                )
+                if expected_sequence is not None and sequence != expected_sequence:
+                    raise ValueError(
+                        f"Bode ADC sample gap: {expected_sequence}->{sequence}"
+                    )
+                expected_sequence = sequence + ch1_raw.size
+                if actual_fs is not None and frame_fs != actual_fs:
+                    raise ValueError(
+                        f"Bode sample-rate changed: {actual_fs}->{frame_fs}"
+                    )
+                actual_fs = frame_fs
+                ch1_blocks.append(ch1_raw)
+                ch2_blocks.append(ch2_raw)
+                sample_count += ch1_raw.size
+
+            self._stop_adc_stream()
+            stream_started = False
+            self._send_command("STOP\n")
+
+            ch1_raw = np.concatenate(ch1_blocks)
+            ch2_raw = np.concatenate(ch2_blocks)
+            vin_scale, vin_offset, vout_scale, vout_offset = self.calibration
+            ch1, ch2 = convert_measurement_channels(
+                ch1_raw, ch2_raw,
+                vin_scale, vin_offset, vout_scale, vout_offset,
+            )
+            ch1_metrics = analyze_channel(
+                ch1, actual_fs, frequency_hz, raw_codes=ch1_raw
+            )
+            ch2_metrics = analyze_channel(
+                ch2, actual_fs, frequency_hz, raw_codes=ch2_raw
+            )
+            if ch1_metrics.saturation or ch2_metrics.saturation:
+                raise ValueError("ADC saturation at this Bode point")
+            if ch1_metrics.vrms_ac <= 1e-6:
+                raise ValueError("Vin is too small for Bode analysis")
+            dut = analyze_dut(
+                ch1_metrics, ch2_metrics, 0.0, float("inf"), frequency_hz
+            )
+            if dut.gain_db is None or dut.phase_shift_deg is None:
+                raise ValueError("Bode sine fit did not produce gain/phase")
+            return dut.gain_db, dut.phase_shift_deg, actual_fs
+        finally:
+            if stream_started:
+                try:
+                    self._stop_adc_stream()
+                except Exception:
+                    pass
+            try:
+                self._send_command("STOP\n")
+            except Exception:
+                connection.reset_input_buffer()
 
     def run(self):
         freqs = np.logspace(np.log10(self.f_start), np.log10(self.f_stop), self.points)
+        valid_freqs = []
         gains = []
         phases = []
+        point_errors = []
         
         for i, f in enumerate(freqs):
             if self.parent_app.serial_conn and self.parent_app.serial_conn.is_open:
-                # Compile parameters and configure hardware
-                wave_cmd = f"CONFIG:WAVE=SINE,FREQ={int(f)},AMP_MV={int(self.amp*1000)},OFFSET_MV=0,DAC_GAIN=X2,FS={int(f*10)},SAMPLES=1024\n"
-                self.parent_app.serial_send_cmd(wave_cmd)
-                self.parent_app.serial_send_cmd("START\n")
-                self.msleep(50)
-                
-                # Fetch result
-                res_str = self.parent_app.serial_query("GET_RESULT\n")
-                self.parent_app.serial_send_cmd("STOP\n")
-                
-                # Parse
+                configured_frequency = int(round(float(f)))
                 try:
-                    if res_str.startswith("RESULT:"):
-                        data = json.loads(res_str[7:])
-                        gains.append(data["gain_db"])
-                        phases.append(data["phase_deg"])
-                    else:
-                        gains.append(-99.0)
-                        phases.append(0.0)
-                except Exception:
-                    gains.append(-99.0)
-                    phases.append(0.0)
+                    gain_db, phase_deg, actual_fs = (
+                        self._capture_hardware_point(configured_frequency)
+                    )
+                    valid_freqs.append(float(configured_frequency))
+                    gains.append(float(gain_db))
+                    phases.append(float(phase_deg))
+                    self.status.emit(
+                        f"{configured_frequency} Hz: {gain_db:.2f} dB, "
+                        f"{phase_deg:.2f} deg, Fs={actual_fs} SPS"
+                    )
+                except Exception as exc:
+                    point_errors.append(f"{configured_frequency} Hz: {exc}")
+                    self.status.emit(
+                        f"Bỏ điểm {configured_frequency} Hz: {exc}"
+                    )
             else:
                 # Simulated sweep
                 fc = 50000.0 
@@ -416,13 +635,23 @@ class SweepWorker(QThread):
                 t_ms = max(5.0, (10 / f) * 1000) 
                 t, v_in, v_out, _ = generate_analyzer_signals(f, self.amp, t_ms, actual_gain, actual_phase)
                 g_db, p_deg = analyze_active(t, v_in, v_out, f)
+                valid_freqs.append(float(f))
                 gains.append(g_db)
                 phases.append(p_deg)
                 
             self.progress.emit(int(((i + 1) / self.points) * 100))
             self.msleep(20)
             
-        self.result.emit(freqs.tolist(), gains, phases)
+        if valid_freqs:
+            self.result.emit(valid_freqs, gains, phases)
+        else:
+            detail = point_errors[0] if point_errors else "không có dữ liệu"
+            self.error.emit(f"Quét Bode không thu được điểm hợp lệ: {detail}")
+        if point_errors and valid_freqs:
+            self.error.emit(
+                f"Đã bỏ {len(point_errors)}/{len(freqs)} điểm lỗi. "
+                f"Lỗi đầu tiên: {point_errors[0]}"
+            )
         self.finished.emit()
 
 
@@ -687,6 +916,21 @@ class SignalAnalyzerApp(QMainWindow):
         if settings["adc_input_range"] not in ("0.3V", "3.3V", "10V"):
             settings["adc_input_range"] = DEFAULT_APP_SETTINGS["adc_input_range"]
         settings["reconstruct_ch2_dc"] = bool(settings["reconstruct_ch2_dc"])
+        settings["dut_name"] = str(settings["dut_name"]).strip() or "DUT 1"
+        numeric_dut_settings = {
+            "dut_target_gain_linear": (0.001, 1000.0),
+            "dut_target_phase_deg": (-180.0, 180.0),
+            "dut_gain_tolerance_db": (0.01, 20.0),
+            "dut_phase_tolerance_deg": (0.01, 180.0),
+            "dut_frequency_tolerance_pct": (0.01, 100.0),
+            "dut_input_amplitude_tolerance_pct": (0.01, 100.0),
+        }
+        for key, (minimum, maximum) in numeric_dut_settings.items():
+            try:
+                value = float(settings[key])
+            except (TypeError, ValueError):
+                value = float(DEFAULT_APP_SETTINGS[key])
+            settings[key] = min(max(value, minimum), maximum)
         return settings
 
     def save_app_settings(self):
@@ -695,6 +939,25 @@ class SignalAnalyzerApp(QMainWindow):
                 json.dump(self.app_settings, file, indent=2, ensure_ascii=False)
         except OSError as exc:
             print(f"Unable to save application settings: {exc}")
+
+    def target_gain_db(self):
+        return 20.0 * math.log10(self.spin_target_gain_linear.value())
+
+    def update_target_gain_db_label(self):
+        self.lbl_target_gain_db.setText(f"{self.target_gain_db():.3f} dB")
+
+    def save_dut_settings(self, _value=None):
+        self.app_settings.update({
+            "dut_name": self.edit_dut_name.text().strip() or "DUT 1",
+            "dut_target_gain_linear": self.spin_target_gain_linear.value(),
+            "dut_target_phase_deg": self.spin_target_phase.value(),
+            "dut_gain_tolerance_db": self.spin_tol_gain.value(),
+            "dut_phase_tolerance_deg": self.spin_tol_phase.value(),
+            "dut_frequency_tolerance_pct": self.spin_tol_freq.value(),
+            "dut_input_amplitude_tolerance_pct": self.spin_tol_amp.value(),
+        })
+        self.update_target_gain_db_label()
+        self.save_app_settings()
 
     def tr(self, source_text):
         if self.language == "vi":
@@ -910,28 +1173,61 @@ class SignalAnalyzerApp(QMainWindow):
         run_layout.addWidget(self.chk_export_raw)
         ana_layout.addLayout(run_layout)
         
-        # PASS/FAIL CRITERIA
-        pf_group = QGroupBox("Pass/Fail Tolerance")
+        # DUT SPECIFICATION AND PASS/FAIL CRITERIA
+        pf_group = QGroupBox("DUT Setup and Pass/Fail")
         pf_layout = QGridLayout()
-        
-        self.spin_target_gain = QDoubleSpinBox(); self.spin_target_gain.setRange(-50, 50); self.spin_target_gain.setValue(-2.0); self.spin_target_gain.setSuffix(" dB")
-        self.spin_tol_gain = QDoubleSpinBox(); self.spin_tol_gain.setRange(0.1, 10); self.spin_tol_gain.setValue(1.5); self.spin_tol_gain.setSuffix(" dB")
-        self.spin_tol_freq = QDoubleSpinBox(); self.spin_tol_freq.setRange(0.01, 25); self.spin_tol_freq.setValue(1.0); self.spin_tol_freq.setSuffix(" %")
-        self.spin_tol_amp = QDoubleSpinBox(); self.spin_tol_amp.setRange(0.1, 50); self.spin_tol_amp.setValue(5.0); self.spin_tol_amp.setSuffix(" %")
+
+        self.edit_dut_name = QLineEdit(self.app_settings["dut_name"])
+        self.spin_target_gain_linear = QDoubleSpinBox()
+        self.spin_target_gain_linear.setRange(0.001, 1000.0)
+        self.spin_target_gain_linear.setDecimals(3)
+        self.spin_target_gain_linear.setValue(
+            self.app_settings["dut_target_gain_linear"]
+        )
+        self.spin_target_gain_linear.setSuffix(" x")
+        self.lbl_target_gain_db = QLabel()
+        self.spin_target_phase = QDoubleSpinBox()
+        self.spin_target_phase.setRange(-180.0, 180.0)
+        self.spin_target_phase.setDecimals(3)
+        self.spin_target_phase.setValue(
+            self.app_settings["dut_target_phase_deg"]
+        )
+        self.spin_target_phase.setSuffix(" °")
+        self.spin_tol_gain = QDoubleSpinBox(); self.spin_tol_gain.setRange(0.01, 20); self.spin_tol_gain.setValue(self.app_settings["dut_gain_tolerance_db"]); self.spin_tol_gain.setSuffix(" dB")
+        self.spin_tol_phase = QDoubleSpinBox(); self.spin_tol_phase.setRange(0.01, 180); self.spin_tol_phase.setValue(self.app_settings["dut_phase_tolerance_deg"]); self.spin_tol_phase.setSuffix(" °")
+        self.spin_tol_freq = QDoubleSpinBox(); self.spin_tol_freq.setRange(0.01, 100); self.spin_tol_freq.setValue(self.app_settings["dut_frequency_tolerance_pct"]); self.spin_tol_freq.setSuffix(" %")
+        self.spin_tol_amp = QDoubleSpinBox(); self.spin_tol_amp.setRange(0.01, 100); self.spin_tol_amp.setValue(self.app_settings["dut_input_amplitude_tolerance_pct"]); self.spin_tol_amp.setSuffix(" %")
         self.lbl_pf_status = QLabel("STATUS: IDLE")
         self.lbl_pf_status.setStyleSheet("font-size: 16px; font-weight: bold; color: gray; qproperty-alignment: AlignCenter;")
-        
-        pf_layout.addWidget(QLabel("Target Gain:"), 0, 0)
-        pf_layout.addWidget(self.spin_target_gain, 0, 1)
-        pf_layout.addWidget(QLabel("Gain Tol +/-:"), 1, 0)
-        pf_layout.addWidget(self.spin_tol_gain, 1, 1)
-        pf_layout.addWidget(QLabel("Frequency Tol +/-:"), 2, 0)
-        pf_layout.addWidget(self.spin_tol_freq, 2, 1)
-        pf_layout.addWidget(QLabel("Input Amplitude Tol +/-:"), 3, 0)
-        pf_layout.addWidget(self.spin_tol_amp, 3, 1)
-        pf_layout.addWidget(self.lbl_pf_status, 4, 0, 1, 2)
+
+        pf_layout.addWidget(QLabel("DUT Name:"), 0, 0)
+        pf_layout.addWidget(self.edit_dut_name, 0, 1)
+        pf_layout.addWidget(QLabel("Target Gain:"), 1, 0)
+        pf_layout.addWidget(self.spin_target_gain_linear, 1, 1)
+        pf_layout.addWidget(QLabel("Target Gain dB:"), 2, 0)
+        pf_layout.addWidget(self.lbl_target_gain_db, 2, 1)
+        pf_layout.addWidget(QLabel("Target Phase:"), 3, 0)
+        pf_layout.addWidget(self.spin_target_phase, 3, 1)
+        pf_layout.addWidget(QLabel("Gain Tol +/-:"), 4, 0)
+        pf_layout.addWidget(self.spin_tol_gain, 4, 1)
+        pf_layout.addWidget(QLabel("Phase Tol +/-:"), 5, 0)
+        pf_layout.addWidget(self.spin_tol_phase, 5, 1)
+        pf_layout.addWidget(QLabel("Frequency Tol +/-:"), 6, 0)
+        pf_layout.addWidget(self.spin_tol_freq, 6, 1)
+        pf_layout.addWidget(QLabel("Input Amplitude Tol +/-:"), 7, 0)
+        pf_layout.addWidget(self.spin_tol_amp, 7, 1)
+        pf_layout.addWidget(self.lbl_pf_status, 8, 0, 1, 2)
         pf_group.setLayout(pf_layout)
         ana_layout.addWidget(pf_group)
+
+        self.edit_dut_name.editingFinished.connect(self.save_dut_settings)
+        for widget in (
+            self.spin_target_gain_linear, self.spin_target_phase,
+            self.spin_tol_gain, self.spin_tol_phase,
+            self.spin_tol_freq, self.spin_tol_amp,
+        ):
+            widget.valueChanged.connect(self.save_dut_settings)
+        self.update_target_gain_db_label()
         
         ana_layout.addStretch()
         self.ctrl_tabs.addTab(self.make_scrollable(ana_widget), "Analyzer")
@@ -942,8 +1238,8 @@ class SignalAnalyzerApp(QMainWindow):
         
         sweep_group = QGroupBox("Bode Plot Settings")
         sweep_form = QFormLayout()
-        self.sweep_start = QDoubleSpinBox(); self.sweep_start.setRange(10, 100000); self.sweep_start.setValue(100); self.sweep_start.setSuffix(" Hz")
-        self.sweep_stop = QDoubleSpinBox(); self.sweep_stop.setRange(1000, 1000000); self.sweep_stop.setValue(250000); self.sweep_stop.setSuffix(" Hz")
+        self.sweep_start = QDoubleSpinBox(); self.sweep_start.setRange(10, 20000); self.sweep_start.setValue(100); self.sweep_start.setSuffix(" Hz")
+        self.sweep_stop = QDoubleSpinBox(); self.sweep_stop.setRange(100, 20000); self.sweep_stop.setValue(20000); self.sweep_stop.setSuffix(" Hz")
         self.sweep_pts = QDoubleSpinBox(); self.sweep_pts.setRange(5, 200); self.sweep_pts.setValue(30)
         
         sweep_form.addRow("Start Freq:", self.sweep_start)
@@ -957,6 +1253,9 @@ class SignalAnalyzerApp(QMainWindow):
         
         self.progress_bar = QProgressBar(); self.progress_bar.setValue(0)
         sweep_form.addRow(self.progress_bar)
+        self.lbl_bode_status = QLabel("Sẵn sàng")
+        self.lbl_bode_status.setWordWrap(True)
+        sweep_form.addRow("Trạng thái:", self.lbl_bode_status)
         sweep_group.setLayout(sweep_form)
         sweep_layout.addWidget(sweep_group)
         
@@ -1214,6 +1513,7 @@ class SignalAnalyzerApp(QMainWindow):
         )
         self.channel_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.channel_table.verticalHeader().setVisible(False)
+        self.channel_table.verticalHeader().setDefaultSectionSize(24)
         for row, name in enumerate(self.channel_metric_names):
             self.channel_table.setItem(row, 0, QTableWidgetItem(name))
             self.channel_table.setItem(row, 1, QTableWidgetItem("N/A"))
@@ -1221,24 +1521,26 @@ class SignalAnalyzerApp(QMainWindow):
         channel_group = QGroupBox("Channel Measurement")
         channel_group_layout = QVBoxLayout(channel_group)
         channel_group_layout.addWidget(self.channel_table)
-        measurement_layout.addWidget(channel_group)
+        measurement_layout.addWidget(channel_group, stretch=10)
 
         self.dut_metric_names = [
-            "Gain linear", "Gain dB", "Target gain dB", "Gain error dB",
-            "Gain tolerance", "Phase shift", "Delay", "Communication",
-            "Result / Reasons",
+            "DUT name", "Gain linear", "Gain dB", "Target gain linear",
+            "Target gain dB", "Gain error dB", "Gain tolerance",
+            "Phase shift", "Target phase", "Phase error", "Phase tolerance",
+            "Delay", "Communication", "Result / Reasons",
         ]
         self.dut_table = QTableWidget(len(self.dut_metric_names), 2)
         self.dut_table.setHorizontalHeaderLabels(["DUT Metric", "Value"])
         self.dut_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.dut_table.verticalHeader().setVisible(False)
+        self.dut_table.verticalHeader().setDefaultSectionSize(24)
         for row, name in enumerate(self.dut_metric_names):
             self.dut_table.setItem(row, 0, QTableWidgetItem(name))
             self.dut_table.setItem(row, 1, QTableWidgetItem("N/A"))
         dut_group = QGroupBox("DUT Analysis")
         dut_group_layout = QVBoxLayout(dut_group)
         dut_group_layout.addWidget(self.dut_table)
-        measurement_layout.addWidget(dut_group)
+        measurement_layout.addWidget(dut_group, stretch=14)
         self.view_tabs.addTab(measurement_tab, "Measurements")
 
         main_layout.addWidget(self.view_tabs, stretch=3)
@@ -1643,7 +1945,10 @@ class SignalAnalyzerApp(QMainWindow):
         self.ch2_color = self.app_settings["ch2_color"]
         for widget in (
             self.combo_language, self.combo_theme, self.chk_show_grid,
-            self.chk_auto_scale, self.spin_line_width,
+            self.chk_auto_scale, self.spin_line_width, self.edit_dut_name,
+            self.spin_target_gain_linear, self.spin_target_phase,
+            self.spin_tol_gain, self.spin_tol_phase,
+            self.spin_tol_freq, self.spin_tol_amp,
         ):
             widget.blockSignals(True)
         self.combo_language.setCurrentIndex(self.combo_language.findData(self.language))
@@ -1654,12 +1959,35 @@ class SignalAnalyzerApp(QMainWindow):
         self.chk_reconstruct_ch2_dc.setChecked(
             self.app_settings["reconstruct_ch2_dc"]
         )
+        self.edit_dut_name.setText(self.app_settings["dut_name"])
+        self.spin_target_gain_linear.setValue(
+            self.app_settings["dut_target_gain_linear"]
+        )
+        self.spin_target_phase.setValue(
+            self.app_settings["dut_target_phase_deg"]
+        )
+        self.spin_tol_gain.setValue(
+            self.app_settings["dut_gain_tolerance_db"]
+        )
+        self.spin_tol_phase.setValue(
+            self.app_settings["dut_phase_tolerance_deg"]
+        )
+        self.spin_tol_freq.setValue(
+            self.app_settings["dut_frequency_tolerance_pct"]
+        )
+        self.spin_tol_amp.setValue(
+            self.app_settings["dut_input_amplitude_tolerance_pct"]
+        )
+        self.update_target_gain_db_label()
         self.chk_show_grid.setChecked(self.app_settings["show_grid"])
         self.chk_auto_scale.setChecked(self.app_settings["auto_scale"])
         self.spin_line_width.setValue(self.app_settings["line_width"])
         for widget in (
             self.combo_language, self.combo_theme, self.chk_show_grid,
-            self.chk_auto_scale, self.spin_line_width,
+            self.chk_auto_scale, self.spin_line_width, self.edit_dut_name,
+            self.spin_target_gain_linear, self.spin_target_phase,
+            self.spin_tol_gain, self.spin_tol_phase,
+            self.spin_tol_freq, self.spin_tol_amp,
         ):
             widget.blockSignals(False)
         self.apply_visual_settings()
@@ -2125,8 +2453,10 @@ class SignalAnalyzerApp(QMainWindow):
         ch2_metrics = analyze_channel(ch2, fs, target_frequency, ch2_raw)
         dut = analyze_dut(
             ch1_metrics, ch2_metrics,
-            self.spin_target_gain.value(), self.spin_tol_gain.value(),
+            self.target_gain_db(), self.spin_tol_gain.value(),
             target_frequency,
+            target_phase_deg=self.spin_target_phase.value(),
+            phase_tolerance_deg=self.spin_tol_phase.value(),
         )
         evaluation = evaluate_pass_fail(
             self.last_sampling_quality, ch1_metrics, ch2_metrics, dut,
@@ -2193,12 +2523,17 @@ class SignalAnalyzerApp(QMainWindow):
         ))
         dut, evaluation = self.last_dut_metrics, self.last_evaluation
         values = [
+            self.edit_dut_name.text().strip() or "DUT 1",
             self.format_optional(dut.gain_linear, " x"),
             self.format_optional(dut.gain_db, " dB"),
+            f"{dut.target_gain_linear:.3f} x",
             f"{dut.target_gain_db:.3f} dB",
             self.format_optional(dut.gain_error_db, " dB"),
             f"±{dut.gain_tolerance_db:.3f} dB",
             self.format_optional(dut.phase_shift_deg, " °"),
+            f"{dut.target_phase_deg:.3f} °",
+            self.format_optional(dut.phase_error_deg, " °"),
+            f"±{dut.phase_tolerance_deg:.3f} °",
             self.format_optional(dut.delay_us, " µs"),
             "OK" if self.last_communication_ok else f"ERROR: {self.last_communication_error}",
             f"{evaluation.status}: {', '.join(evaluation.reasons)}",
@@ -2208,21 +2543,62 @@ class SignalAnalyzerApp(QMainWindow):
 
     # --- SWEEP BODE ---
     def run_sweep(self):
+        if self.capture_worker is not None:
+            QMessageBox.warning(
+                self, self.tr("Warning"),
+                "Hãy dừng chế độ đo liên tục trước khi chạy quét Bode."
+            )
+            return
+        if self.sweep_start.value() >= self.sweep_stop.value():
+            QMessageBox.warning(
+                self, self.tr("Warning"),
+                "Tần số bắt đầu phải nhỏ hơn tần số kết thúc."
+            )
+            return
         self.view_tabs.setCurrentIndex(1) 
         self.btn_sweep.setEnabled(False)
+        self.progress_bar.setValue(0)
+        self.lbl_bode_status.setText("Đang chuẩn bị quét...")
+        range_index = self.active_range_index()
+        calibration = (
+            self.calibration_value("adc1_r0_m", 1.0),
+            self.calibration_value("adc1_r0_c", 0.0),
+            self.calibration_value(f"adc2_r{range_index}_m", 1.0),
+            self.calibration_value(f"adc2_r{range_index}_c", 0.0),
+        )
+        dac_gain = "X1" if self.ana_combo_gain.currentIndex() == 0 else "X2"
         self.worker = SweepWorker(
             self,
             self.sweep_start.value(), self.sweep_stop.value(),
-            int(self.sweep_pts.value()), self.ana_spin_amp.value()
+            int(self.sweep_pts.value()), self.ana_spin_amp.value(),
+            range_index=range_index, calibration=calibration,
+            dac_gain=dac_gain,
         )
         self.worker.progress.connect(self.progress_bar.setValue)
+        self.worker.status.connect(self.lbl_bode_status.setText)
+        self.worker.error.connect(self.handle_bode_error)
         self.worker.result.connect(self.update_bode_plot)
-        self.worker.finished.connect(lambda: self.btn_sweep.setEnabled(True))
+        self.worker.finished.connect(self.finish_bode_sweep)
         self.worker.start()
 
     def update_bode_plot(self, freqs, gains, phases):
         self.curve_bode_gain.setData(freqs, gains)
         self.curve_bode_phase.setData(freqs, phases)
+        if gains:
+            self.lbl_ana_gain.setText(f"{gains[-1]:.2f} dB")
+        if phases:
+            self.lbl_ana_phase.setText(f"{phases[-1]:.2f} °")
+
+    def handle_bode_error(self, message):
+        self.lbl_bode_status.setText(message)
+        QMessageBox.warning(self, "Bode", message)
+
+    def finish_bode_sweep(self):
+        self.btn_sweep.setEnabled(True)
+        if self.progress_bar.value() == 100 and not self.lbl_bode_status.text().startswith("Quét Bode không"):
+            self.lbl_bode_status.setText(
+                "Hoàn tất quét Bode; đồ thị chỉ chứa các điểm hợp lệ."
+            )
 
     # --- CALIBRATION INTERFACE METHODS ---
     def set_calibration_status(self, status):
@@ -2379,6 +2755,16 @@ class SignalAnalyzerApp(QMainWindow):
                 "tester": "PyQt6 Signal Analyzer Pro",
                 "timestamp": timestamp,
                 "device_info": self.device_info,
+                "dut_setup": {
+                    "name": self.edit_dut_name.text().strip() or "DUT 1",
+                    "target_gain_linear": self.spin_target_gain_linear.value(),
+                    "target_gain_db": self.target_gain_db(),
+                    "target_phase_deg": self.spin_target_phase.value(),
+                    "gain_tolerance_db": self.spin_tol_gain.value(),
+                    "phase_tolerance_deg": self.spin_tol_phase.value(),
+                    "frequency_tolerance_pct": self.spin_tol_freq.value(),
+                    "input_amplitude_tolerance_pct": self.spin_tol_amp.value(),
+                },
                 "waveform_config": {
                     "waveform_type": self.ana_combo_wave.currentText(),
                     "target_frequency_hz": self.ana_spin_freq.value(),

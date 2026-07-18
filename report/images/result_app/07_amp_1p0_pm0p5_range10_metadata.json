@@ -1,6 +1,6 @@
 {
-  "source": "D:\\hust\\amplifier_analyzer\\test.txt",
-  "hardware": "STM32F103 + COM4, real SignalAnalyzerApp capture",
+  "source": "D:\\Duong\\test.txt",
+  "hardware": "STM32F103 + COM6, real SignalAnalyzerApp capture",
   "assumptions": [
     "The repeated fourth 1000 Hz entry was interpreted as 10000 Hz.",
     "The requested range 0.4 was mapped to the available 0.3V range."
@@ -18,7 +18,70 @@
       "results_image": "07_amp_1p0_pm0p5_range10_results.png",
       "communication_ok": true,
       "communication_error": "",
-      "ch2_dc_status": "CH2 DC inferred: -10.052 V (not measured)"
+      "ch2_dc_status": "CH2 DC inferred: -10.045 V (not measured)",
+      "dut_setup": {
+        "name": "DUT gain 3x",
+        "target_gain_linear": 3.0,
+        "target_gain_db": 9.542425094393248,
+        "target_phase_deg": 0.0,
+        "gain_tolerance_db": 1.5,
+        "phase_tolerance_deg": 10.0
+      },
+      "ch1_metrics": {
+        "vmax": 1.4990234375,
+        "vmin": 0.5078125,
+        "vpp": 0.9912109375,
+        "vpeak": 0.49560546875,
+        "vrms_total": 1.0653709404015757,
+        "vrms_ac": 0.35106576285441227,
+        "vmean": 1.005866825580597,
+        "sine_peak_est": 0.4951403971527691,
+        "frequency_hz": 1000.091669761145,
+        "period_us": 999.9083386414299,
+        "noise_rms": 0.004070441572427838,
+        "sine_phase_deg": 44.713707798982,
+        "clipping": true,
+        "saturation": false,
+        "sample_count": 4096
+      },
+      "ch2_metrics": {
+        "vmax": -4.745092434496091,
+        "vmin": -13.631811628832029,
+        "vpp": 8.886719194335939,
+        "vpeak": 4.443359597167969,
+        "vrms_total": 10.645565491674366,
+        "vrms_ac": 3.526302355210096,
+        "vmean": -10.04456352148603,
+        "sine_peak_est": 3.538382698873841,
+        "frequency_hz": 999.9715957309255,
+        "period_us": 1000.0284050758999,
+        "noise_rms": 2.478187552419774,
+        "sine_phase_deg": -132.85132207199138,
+        "clipping": true,
+        "saturation": false,
+        "sample_count": 4096
+      },
+      "dut_metrics": {
+        "gain_linear": 10.044563521486033,
+        "gain_db": 20.038621391464115,
+        "target_gain_linear": 3.0,
+        "target_gain_db": 9.542425094393248,
+        "gain_error_db": 10.496196297070867,
+        "gain_tolerance_db": 1.5,
+        "phase_shift_deg": -177.56502987097338,
+        "target_phase_deg": 0.0,
+        "phase_error_deg": -177.56502987097338,
+        "phase_tolerance_deg": 10.0,
+        "delay_us": -493.23619408603713
+      },
+      "evaluation": {
+        "status": "FAIL",
+        "reasons": [
+          "SIGNAL_CLIPPING",
+          "GAIN_OUT_OF_TOLERANCE",
+          "PHASE_OUT_OF_TOLERANCE"
+        ]
+      }
     }
   ]
 }

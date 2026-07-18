@@ -1,7 +1,7 @@
 # Nhật ký debug ADC, DAC, USB CDC và ứng dụng desktop
 
-**Dự án:** Amplifier Analyzer – STM32F103C8T6, MCP4822, ADS7861, USB CDC  
-**Ngày tổng hợp:** 16/07/2026  
+**Dự án:** Amplifier Analyzer – STM32F103C8T6, MCP4822, ADS7861, USB CDC
+**Ngày tổng hợp:** 16/07/2026
 **Mục đích:** Lưu lại toàn bộ chuỗi lỗi, các giả thuyết đã loại trừ, bằng chứng thực nghiệm và trạng thái hiện tại để không lặp lại quá trình debug.
 
 ## 1. Kiến trúc và luồng hoạt động mong muốn
@@ -288,4 +288,3 @@ Giải pháp dài hạn nên tránh HAL blocking trong ISR và tránh bit-bang A
 4. Firmware MCP-only và oscilloscope đã xác nhận MCP4822 cùng đường SPI hoạt động tốt.
 5. Production hiện có thể tạo sine đẹp, nhưng runtime `START` vẫn có nguy cơ làm USB mất phản hồi.
 6. Vùng lỗi còn lại là tích hợp realtime giữa ADS7861, timer DAC và USB CDC; cần debug tách lớp và tăng tốc độ từng bước.
-

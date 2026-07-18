@@ -49,7 +49,27 @@ class SamplingQualityTests(unittest.TestCase):
         self.assertAlmostEqual(m1.vmean, 0.1, places=3)
         self.assertAlmostEqual(m1.vrms_ac, 0.3 / math.sqrt(2), places=3)
         self.assertAlmostEqual(dut.gain_linear, 2.0, places=3)
+        self.assertAlmostEqual(dut.target_gain_linear, 2.0, places=3)
         self.assertAlmostEqual(dut.phase_shift_deg, -30.0, places=2)
+
+    def test_dut_spec_checks_gain_and_phase_independently_of_range(self):
+        fs, freq = 140_000.0, 200.0
+        t = np.arange(7000) / fs
+        ch1 = np.sin(2 * np.pi * freq * t)
+        ch2 = 3.0 * np.sin(2 * np.pi * freq * t + math.radians(15.0))
+        m1 = analyze_channel(ch1, fs, freq)
+        m2 = analyze_channel(ch2, fs, freq)
+        dut = analyze_dut(
+            m1, m2, 20.0 * math.log10(3.0), 0.1, freq,
+            target_phase_deg=10.0, phase_tolerance_deg=2.0,
+        )
+        self.assertAlmostEqual(dut.gain_error_db, 0.0, places=3)
+        self.assertAlmostEqual(dut.phase_error_deg, 5.0, places=2)
+        evaluation = evaluate_pass_fail(
+            calculate_sampling_quality(freq, fs), m1, m2, dut, freq
+        )
+        self.assertNotIn("GAIN_OUT_OF_TOLERANCE", evaluation.reasons)
+        self.assertIn("PHASE_OUT_OF_TOLERANCE", evaluation.reasons)
 
     def test_measurement_warning_prevents_absolute_pass(self):
         fs, freq = 200_000.0, 20_000.0
