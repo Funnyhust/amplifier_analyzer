@@ -62,9 +62,9 @@ ADS7861 lấy mẫu hai kênh gần như đồng thời. Điều này quan trọ
 
 Một tín hiệu sine được viết:
 
-\[
+$$
 v(t)=A\sin(2\pi f t+\phi)+C
-\]
+$$
 
 Trong đó:
 
@@ -106,9 +106,9 @@ Desktop ước lượng tần số bằng các lần tín hiệu đi qua mức t
 
 ### Vmax, Vmin, Vpp
 
-\[
+$$
 V_{pp}=V_{max}-V_{min}
-\]
+$$
 
 Vpp trực quan và dễ kiểm tra trên oscilloscope. Tuy nhiên, nếu không lấy mẫu đúng đỉnh thì Vmax bị thấp và Vpp bị đánh giá thiếu.
 
@@ -123,9 +123,9 @@ Giá trị trung bình biểu diễn thành phần DC. Với tín hiệu `2 ± 1
 
 Với sine biên độ đỉnh `A`:
 
-\[
+$$
 V_{RMS,AC}=\frac{A}{\sqrt{2}}
-\]
+$$
 
 Tại sao dự án dùng RMS AC để tính gain? Vì Vin và Vout có thể có offset khác nhau do bias và mạch AFE. Nếu dùng RMS toàn phần, offset sẽ làm sai gain. RMS AC cũng ít phụ thuộc vào việc có lấy trúng đỉnh hay không.
 
@@ -133,17 +133,17 @@ Tại sao dự án dùng RMS AC để tính gain? Vì Vin và Vout có thể có
 
 Gain tuyến tính:
 
-\[
+$$
 G=\frac{V_{out}}{V_{in}}
-\]
+$$
 
 Trong dự án, tử và mẫu là RMS AC của hai kênh. Nếu DUT gain 3 thì biên độ AC đầu ra lý tưởng gấp ba đầu vào.
 
 Gain dB:
 
-\[
+$$
 G_{dB}=20\log_{10}(G)
-\]
+$$
 
 Các mốc cần nhớ:
 
@@ -176,15 +176,15 @@ Hai sine cùng tần số có thể lệch nhau một góc `Δφ`.
 
 Độ trễ tương đương:
 
-\[
+$$
 \tau=\frac{\Delta\phi}{360f}
-\]
+$$
 
 Ví dụ `f = 1 kHz`, lệch pha `36°` tương đương:
 
-\[
+$$
 \tau=\frac{36}{360\times1000}=100\ \mu s
-\]
+$$
 
 Tại sao đo pha? Gain đúng chưa đủ. Một mạch có thể khuếch đại đúng biên độ nhưng gây trễ lớn, ảnh hưởng ổn định vòng điều khiển, băng thông và chất lượng tín hiệu.
 
@@ -194,9 +194,9 @@ Lưu ý của nguyên mẫu: pha Bode ở tần số cao còn gồm trễ của 
 
 Đáp ứng tần số của DUT là:
 
-\[
+$$
 H(j\omega)=\frac{V_{out}(j\omega)}{V_{in}(j\omega)}
-\]
+$$
 
 Đồ thị Bode gồm:
 
@@ -220,17 +220,17 @@ Trong kết quả hiện tại, gain phần cứng khoảng 9,26–9,47 dB, gầ
 
 Nyquist yêu cầu:
 
-\[
+$$
 F_s>2f_{max}
-\]
+$$
 
 Điều này chỉ đảm bảo về lý thuyết có thể tránh aliasing khi tín hiệu đã được giới hạn băng thông. Nó không đảm bảo waveform vẽ đẹp hoặc đo peak/phase chính xác.
 
 Số mẫu mỗi chu kỳ:
 
-\[
+$$
 N=\frac{F_s}{f}
-\]
+$$
 
 Với `Fs = 140077 SPS`:
 
@@ -270,9 +270,9 @@ Phân biệt:
 
 ADC 12 bit có 4096 mã. Độ phân giải lý tưởng của ADS7861 theo điện áp vi sai là xấp xỉ:
 
-\[
+$$
 LSB=\frac{V_{REF}}{2048}
-\]
+$$
 
 vì dữ liệu gốc là signed 12-bit với miền `−2048…2047`.
 
@@ -304,9 +304,9 @@ Relay dùng break-before-make: tắt tất cả relay, chờ, sau đó bật rel
 
 Calibration tuyến tính dùng:
 
-\[
+$$
 V_{true}=mV_{raw}+c
-\]
+$$
 
 - `m`: bù sai số gain.
 - `c`: bù offset.
@@ -325,9 +325,9 @@ Calibration tuyến tính không bù được hoàn toàn:
 
 Sau khi khớp sine, phần dư là:
 
-\[
+$$
 e[n]=v[n]-v_{fit}[n]
-\]
+$$
 
 RMS của phần dư được app gọi là `noise_rms`. Nó gồm nhiễu, hài, sai tần số mô hình và mọi thành phần không được mô hình sine giải thích. Vì vậy không nên khẳng định đây là nhiễu thuần túy hoặc THD+N chuẩn phòng thí nghiệm.
 
@@ -345,15 +345,15 @@ RMS của phần dư được app gọi là `noise_rms`. Nó gồm nhiễu, hài
 
 ## 1. Mean và RMS AC
 
-\[
+$$
 \bar v=\frac{1}{M}\sum_{n=0}^{M-1}v[n]
-\]
+$$
 
 `M` là số mẫu. Mean là mức DC trung bình.
 
-\[
+$$
 V_{RMS,AC}=\sqrt{\frac{1}{M}\sum_{n=0}^{M-1}(v[n]-\bar v)^2}
-\]
+$$
 
 Các bước code thực hiện:
 
@@ -367,21 +367,21 @@ Ví dụ `v(t)=0,3sin(ωt)+0,1`: mean = 0,1 V; RMS AC = `0,3/√2 ≈ 0,2121 V`.
 
 ## 2. Gain tuyến tính và gain dB
 
-\[
+$$
 G_{lin}=\frac{V_{out,RMS,AC}}{V_{in,RMS,AC}}
-\]
+$$
 
 Nếu Vout RMS = 0,4243 V và Vin RMS = 0,2121 V thì gain = 2.
 
-\[
+$$
 G_{dB}=20\log_{10}(G_{lin})
-\]
+$$
 
 Gain error:
 
-\[
+$$
 E_G=G_{measured,dB}-G_{target,dB}
-\]
+$$
 
 Đạt nếu `|E_G| ≤ tolerance`.
 
@@ -389,21 +389,21 @@ E_G=G_{measured,dB}-G_{target,dB}
 
 Báo cáo viết:
 
-\[
+$$
 v(t)=A\sin(2\pi ft+\phi)+C+e(t)
-\]
+$$
 
 Code không giải phi tuyến trực tiếp. Nó biến đổi:
 
-\[
+$$
 v(t)=a\sin(2\pi ft)+b\cos(2\pi ft)+C
-\]
+$$
 
 rồi dùng least squares tìm `a`, `b`, `C`. Sau đó:
 
-\[
+$$
 A=\sqrt{a^2+b^2},\qquad \phi=\operatorname{atan2}(b,a)
-\]
+$$
 
 Đây là lý do code tạo ma trận ba cột `sin`, `cos`, `1` trong `_sine_fit()`.
 
@@ -411,9 +411,9 @@ A=\sqrt{a^2+b^2},\qquad \phi=\operatorname{atan2}(b,a)
 
 ## 4. Pha và chuẩn hóa góc
 
-\[
+$$
 \Delta\phi=\phi_{out}-\phi_{in}
-\]
+$$
 
 Code chuẩn hóa:
 
@@ -427,9 +427,9 @@ Phase error cũng được chuẩn hóa theo cách tương tự so với phase m
 
 ## 5. Độ trễ
 
-\[
+$$
 \tau=\frac{\Delta\phi}{360f}
-\]
+$$
 
 Nếu cần µs thì nhân `10^6`.
 
@@ -437,29 +437,29 @@ Lưu ý: đây là độ trễ tương đương tại một tần số, không n
 
 ## 6. Số mẫu trên chu kỳ
 
-\[
+$$
 N=\frac{F_s}{f}
-\]
+$$
 
 Ví dụ `Fs=140077`, `f=20 kHz`:
 
-\[
+$$
 N\approx 7,00
-\]
+$$
 
 Pha cách nhau giữa hai mẫu là:
 
-\[
+$$
 \Delta\theta=\frac{360°}{N}
-\]
+$$
 
 Với N = 7, mỗi mẫu cách nhau hơn 51°, nên vị trí đỉnh và pha rất nhạy.
 
 ## 7. Chu kỳ và khoảng lấy mẫu
 
-\[
+$$
 T_{signal}=\frac{1}{f},\qquad T_s=\frac{1}{F_s}
-\]
+$$
 
 Báo cáo đổi sang µs bằng cách dùng `10^6` ở tử.
 
@@ -467,15 +467,15 @@ Báo cáo đổi sang µs bằng cách dùng `10^6` ở tử.
 
 Trường hợp xấu nhất, mẫu gần đỉnh bị lệch nửa bước lấy mẫu. Khoảng pha đó là `π/N`, nên biên độ mẫu được chỉ còn `A cos(π/N)`.
 
-\[
+$$
 E_{peak}=\left(1-\cos\frac{\pi}{N}\right)100\%
-\]
+$$
 
 Với N = 10:
 
-\[
+$$
 E_{peak}\approx 4,894\%
-\]
+$$
 
 Đây là sai số xấu nhất của cách đo peak bằng mẫu rời rạc, không phải sai số bắt buộc của sine fit.
 
@@ -483,17 +483,17 @@ E_{peak}\approx 4,894\%
 
 Đáp ứng biên độ của zero-order hold có dạng sinc. Tại tần số tín hiệu:
 
-\[
+$$
 E_{ZOH}=\left(1-\frac{\sin(\pi/N)}{\pi/N}\right)100\%
-\]
+$$
 
 N càng lớn, suy hao càng nhỏ. Công thức này đánh giá lý tưởng của quá trình giữ mẫu, chưa bao gồm settling, sai số DAC và mạch lọc.
 
 ## 10. Settling margin
 
-\[
+$$
 T_{margin}=T_s-T_{settling}
-\]
+$$
 
 Với Fs = 200 kSPS: `Ts = 5 µs`; MCP4822 settling khoảng 4,5 µs; margin = 0,5 µs nên code báo borderline.
 
@@ -503,25 +503,25 @@ Nếu Fs = 500 kSPS: `Ts = 2 µs`, margin = −2,5 µs; DAC chưa kịp ổn đ�
 
 Báo cáo đang có công thức đơn giản hóa theo miền 3,3 V:
 
-\[
+$$
 V=m_r\left(\frac{code}{4095}3,3-1,65\right)+c_r
-\]
+$$
 
 Nhưng **source hiện tại của ADS7861 không dùng đúng công thức này**. Source dùng dữ liệu signed 12-bit, chuyển sang offset-binary để truyền:
 
-\[
+$$
 raw_{signed}=code-2048
-\]
+$$
 
-\[
+$$
 V_{shifted}=\frac{raw_{signed}}{2048}V_{REF},\qquad V_{REF}=2,5V
-\]
+$$
 
 sau đó:
 
-\[
+$$
 V=mV_{shifted}+c
-\]
+$$
 
 Trong desktop:
 
@@ -532,19 +532,19 @@ Nếu bị hỏi, nên trả lời: “Công thức 3,3 V trong báo cáo là bi
 
 ## 12. Gain của DUT không đảo
 
-\[
+$$
 A_v=1+\frac{R_f}{R_g}
-\]
+$$
 
 Với `Rf = 20 kΩ`, `Rg = 10 kΩ`:
 
-\[
+$$
 A_v=3
-\]
+$$
 
-\[
+$$
 G_{dB}=20\log_{10}(3)\approx9,54dB
-\]
+$$
 
 Công thức chỉ đúng khi op-amp đấu không đảo, có hồi tiếp âm, chưa clipping và còn đủ gain-bandwidth/output swing.
 
@@ -552,15 +552,15 @@ Công thức chỉ đúng khi op-amp đấu không đảo, có hồi tiếp âm,
 
 AFE CH2 ghép AC nên không đo trực tiếp mức DC thật của Vout. Khi bật tùy chọn khôi phục, app giả sử DUT tuyến tính đi qua gốc:
 
-\[
+$$
 V_{out}=G V_{in}
-\]
+$$
 
 App suy ra độ lớn gain từ năng lượng AC, lấy dấu từ correlation rồi ước lượng:
 
-\[
+$$
 V_{out,DC}\approx G_{signed}V_{in,DC}
-\]
+$$
 
 Đây là **giá trị suy ra theo mô hình**, không phải DC đo trực tiếp. Không nên dùng nó để công bố đặc tính DC của một DUT có offset riêng.
 
@@ -568,9 +568,9 @@ V_{out,DC}\approx G_{signed}V_{in,DC}
 
 Source gọi hàm là CRC nhưng phép tính hiện tại là XOR tất cả byte:
 
-\[
+$$
 checksum=b_0\oplus b_1\oplus\cdots\oplus b_{L-1}
-\]
+$$
 
 Ưu điểm: rất nhẹ. Nhược điểm: yếu hơn CRC-16/CRC-32; một số tổ hợp nhiều lỗi bit có thể triệt tiêu nhau. Sequence number mới là cơ chế phát hiện mất cả block.
 
@@ -811,9 +811,9 @@ Firmware tính:
 
 Pha firmware bị lượng tử theo một mẫu:
 
-\[
+$$
 \Delta\phi_{step}=360\frac{f}{F_s}=\frac{360}{N}
-\]
+$$
 
 Vì vậy desktop tính lại pha bằng sine fit trên dữ liệu thô để có độ phân giải tốt hơn. Nếu bị hỏi “tại sao tính hai lần?”, trả lời: firmware cho kết quả nhanh/độc lập; desktop có tài nguyên lớn hơn và dùng thuật toán ổn định hơn cho hiển thị chính.
 

@@ -1,0 +1,1290 @@
+\documentclass[12pt,a4paper,oneside]{article}
+\usepackage{fontspec}
+\setmainfont{Times New Roman}
+\setsansfont{Arial}
+\setmonofont{Consolas}
+\usepackage{amsmath,amssymb}
+\usepackage{geometry}
+\geometry{top=2cm,bottom=2cm,left=2.4cm,right=2cm}
+\usepackage{xcolor}
+\usepackage{array,longtable,booktabs}
+\usepackage{enumitem}
+\usepackage{fvextra}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{parskip}
+
+\definecolor{guideblue}{HTML}{0B5FA5}
+\definecolor{guidelight}{HTML}{EAF4FB}
+\definecolor{guidegray}{HTML}{4B5563}
+\hypersetup{colorlinks=true,linkcolor=guideblue,urlcolor=guideblue,
+            pdftitle={Tài liệu ôn bảo vệ đồ án Amplifier Analyzer}}
+\setcounter{tocdepth}{3}
+\setcounter{secnumdepth}{3}
+\setlist{itemsep=2pt,topsep=4pt,leftmargin=1.8em}
+\renewcommand{\arraystretch}{1.18}
+\setlength{\headheight}{14pt}
+\setlength{\emergencystretch}{3em}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small Tài liệu ôn bảo vệ — Amplifier Analyzer}
+\fancyhead[R]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\titleformat{\part}[display]
+  {\centering\bfseries\Huge\color{guideblue}}{}{0pt}{}
+\titleformat{\section}{\bfseries\LARGE\color{guideblue}}
+  {\thesection}{0.6em}{}
+\titleformat{\subsection}{\bfseries\Large\color{guideblue}}
+  {\thesubsection}{0.6em}{}
+\titleformat{\subsubsection}{\bfseries\large\color{guidegray}}
+  {\thesubsubsection}{0.6em}{}
+\newcommand{\inlinecode}[1]{\texttt{#1}}
+\renewcommand{\theHsection}{\arabic{part}.\arabic{section}}
+\pdfstringdefDisableCommands{\def\inlinecode#1{#1}}
+
+\begin{document}
+\begin{titlepage}
+\centering
+\vspace*{2.0cm}
+{\Large ĐẠI HỌC BÁCH KHOA HÀ NỘI\par}
+\vspace{2.2cm}
+{\Huge\bfseries\color{guideblue} TÀI LIỆU ÔN BẢO VỆ ĐỒ ÁN\par}
+\vspace{0.8cm}
+{\LARGE Bộ phân tích mạch khuếch đại\par}
+\vspace{1.5cm}
+{\large Kiến thức nền — Công thức — Giải thích source code\par}
+\vfill
+{\large Biên soạn từ source và báo cáo hiện tại của dự án\par}
+\vspace{0.8cm}
+{\large 2026\par}
+\end{titlepage}
+
+\pagenumbering{roman}
+\tableofcontents
+\clearpage
+\pagenumbering{arabic}
+
+Tài liệu này giải thích đúng theo phiên bản source hiện tại của dự án. Mục tiêu là giúp hiểu bản chất để tự trả lời, không phải học thuộc từng dòng code.
+
+\section{Câu giới thiệu đề tài trong 30 giây}
+
+Đề tài thiết kế một bộ phân tích mạch khuếch đại. Thiết bị dùng DAC MCP4822 tạo tín hiệu kích thích, đưa tín hiệu qua DUT, dùng ADC lấy mẫu đồng thời ADS7861 đo Vin và Vout, STM32F103 điều khiển thời gian và truyền dữ liệu qua USB CDC. Ứng dụng desktop khôi phục điện áp, hiển thị dạng sóng, tính tần số, biên độ, gain, pha và quét Bode. Điểm chính của đề tài không chỉ là “đo ra một con số”, mà còn đánh giá điều kiện đo để phân biệt PASS, FAIL và WARNING.
+
+\clearpage
+
+\clearpage
+\part{PHẦN 1 — KIẾN THỨC NỀN}
+\setcounter{section}{0}
+
+\section{Bài toán thực sự của thiết bị}
+
+Một bộ khuếch đại có đầu vào và đầu ra:
+
+\begin{Verbatim}[breaklines=true,breakanywhere=true,fontsize=\small]
+Nguồn phát → Vin → DUT → Vout
+\end{Verbatim}
+
+Muốn đánh giá DUT, cần biết:
+
+\begin{itemize}
+\item DUT có giữ đúng tần số không?
+\item Điện áp đầu ra lớn hơn đầu vào bao nhiêu lần?
+\item Đầu ra sớm hay trễ pha so với đầu vào?
+\item Gain và pha có thay đổi theo tần số không?
+\item Tín hiệu có bị méo, clipping hoặc bão hòa đường đo không?
+\item Điều kiện lấy mẫu có đủ tốt để tin vào kết quả không?
+\end{itemize}
+
+Kiến trúc của đề tài:
+
+\begin{Verbatim}[breaklines=true,breakanywhere=true,fontsize=\small]
+                  ┌──────────── STM32F103 ────────────┐
+PC ── USB CDC ───►│ cấu hình, timer, DMA, đóng frame  │
+                  └──────┬───────────────────┬────────┘
+                         │ SPI1              │ SPI2
+                    MCP4822 DAC          ADS7861 ADC
+                         │                   ▲     ▲
+                         ▼                   │     │
+                    tín hiệu thử ─► DUT ─► AFE    │
+                         └──── Vin đo trực tiếp ──┘
+\end{Verbatim}
+
+ADS7861 lấy mẫu hai kênh gần như đồng thời. Điều này quan trọng khi đo pha: nếu hai kênh được đo ở hai thời điểm khác nhau thì bản thân độ lệch thời gian của ADC sẽ biến thành sai số pha.
+
+\subsection{Vì sao phải đánh giá từng thông số?}
+
+\begin{longtable}{|>{\raggedright\arraybackslash}p{0.28\textwidth}|>{\raggedright\arraybackslash}p{0.64\textwidth}|}
+\hline
+\textbf{Thông số} & \textbf{Câu hỏi kỹ thuật mà nó trả lời} \\ \hline
+\endfirsthead
+\hline
+\textbf{Thông số} & \textbf{Câu hỏi kỹ thuật mà nó trả lời} \\ \hline
+\endhead
+Tần số & Nguồn phát có đúng không, DUT có giữ đúng thành phần cơ bản không? \\ \hline
+Biên độ/Vpp & Tín hiệu lớn đến đâu, có sử dụng đúng range và có chạm giới hạn không? \\ \hline
+Mean/offset & Điểm làm việc DC có đúng không? \\ \hline
+RMS AC & Năng lượng phần tín hiệu biến thiên là bao nhiêu, không bị offset làm sai? \\ \hline
+Gain & DUT khuếch đại hoặc suy hao bao nhiêu? \\ \hline
+Pha/delay & DUT làm tín hiệu sớm/trễ bao nhiêu, có ảnh hưởng ổn định và timing không? \\ \hline
+Noise residual & Bao nhiêu thành phần không được mô hình sine giải thích? \\ \hline
+Clipping/saturation & Kết quả còn thuộc vùng tuyến tính và miền đo hợp lệ không? \\ \hline
+Bode & Gain và pha thay đổi thế nào theo tần số; băng thông hữu ích nằm ở đâu? \\ \hline
+Sampling quality & Các con số trên có đủ điều kiện để tin cậy hay chỉ mang tính tham khảo? \\ \hline
+\end{longtable}
+
+\section{Tín hiệu sine và các đại lượng cơ bản}
+
+Một tín hiệu sine được viết:
+
+\[
+v(t)=A\sin(2\pi f t+\phi)+C
+\]
+
+Trong đó:
+
+\begin{itemize}
+\item \inlinecode{A}: biên độ đỉnh, đơn vị V.
+\item \inlinecode{f}: tần số, đơn vị Hz.
+\item \inlinecode{φ}: pha ban đầu, đơn vị độ hoặc radian.
+\item \inlinecode{C}: thành phần DC/offset.
+\item Chu kỳ \inlinecode{T = 1/f}.
+\end{itemize}
+
+Ví dụ tín hiệu \inlinecode{2 ± 1 V}, \inlinecode{200 Hz} nghĩa là:
+
+\begin{itemize}
+\item Offset: 2 V.
+\item Biên độ đỉnh: 1 V.
+\item Vmax lý tưởng: 3 V.
+\item Vmin lý tưởng: 1 V.
+\item Vpp: 2 V.
+\item Chu kỳ: 5 ms.
+\end{itemize}
+
+\subsection{Vì sao dùng sine?}
+
+Sine là tín hiệu cơ bản của hệ tuyến tính. Nếu đưa một sine qua hệ tuyến tính bất biến theo thời gian, đầu ra vẫn là sine cùng tần số; chỉ thay đổi biên độ và pha. Vì vậy chỉ cần so sánh Vin/Vout là có thể suy ra đáp ứng của DUT tại tần số đó.
+
+Square và triangle chứa nhiều thành phần hài nên hữu ích khi quan sát đáp ứng quá độ hoặc méo, nhưng khó quy toàn bộ kết quả về một gain và một pha duy nhất.
+
+\section{Tần số: đo để làm gì?}
+
+Tần số cho biết số chu kỳ trong một giây. Thiết bị kiểm tra tần số vì:
+
+\begin{itemize}
+\item Xác nhận DAC phát đúng cấu hình.
+\item Xác nhận DUT không tạo dao động bất thường hoặc làm mất dạng tín hiệu.
+\item Là tham số bắt buộc để tính chu kỳ, pha, độ trễ và số mẫu/chu kỳ.
+\item Là trục ngang của đồ thị Bode.
+\end{itemize}
+
+Desktop ước lượng tần số bằng các lần tín hiệu đi qua mức trung bình theo chiều dương. Nó nội suy vị trí zero crossing giữa hai mẫu để giảm sai số lượng tử thời gian, sau đó lấy trung vị các chu kỳ.
+
+Điểm yếu: zero crossing nhạy với nhiễu. Nếu tín hiệu rất nhỏ, nhiễu có thể tạo thêm nhiều giao điểm giả.
+
+\section{Biên độ, Vpp, RMS và offset}
+
+\subsection{Vmax, Vmin, Vpp}
+
+\[
+V_{pp}=V_{max}-V_{min}
+\]
+
+Vpp trực quan và dễ kiểm tra trên oscilloscope. Tuy nhiên, nếu không lấy mẫu đúng đỉnh thì Vmax bị thấp và Vpp bị đánh giá thiếu.
+
+\subsection{Giá trị trung bình}
+
+Giá trị trung bình biểu diễn thành phần DC. Với tín hiệu \inlinecode{2 ± 1 V}, mean lý tưởng là 2 V.
+
+\subsection{RMS toàn phần và RMS AC}
+
+\begin{itemize}
+\item RMS toàn phần tính cả DC và AC.
+\item RMS AC trừ mean trước, chỉ phản ánh năng lượng biến thiên.
+\end{itemize}
+
+Với sine biên độ đỉnh \inlinecode{A}:
+
+\[
+V_{RMS,AC}=\frac{A}{\sqrt{2}}
+\]
+
+Tại sao dự án dùng RMS AC để tính gain? Vì Vin và Vout có thể có offset khác nhau do bias và mạch AFE. Nếu dùng RMS toàn phần, offset sẽ làm sai gain. RMS AC cũng ít phụ thuộc vào việc có lấy trúng đỉnh hay không.
+
+\section{Gain của DUT}
+
+Gain tuyến tính:
+
+\[
+G=\frac{V_{out}}{V_{in}}
+\]
+
+Trong dự án, tử và mẫu là RMS AC của hai kênh. Nếu DUT gain 3 thì biên độ AC đầu ra lý tưởng gấp ba đầu vào.
+
+Gain dB:
+
+\[
+G_{dB}=20\log_{10}(G)
+\]
+
+Các mốc cần nhớ:
+
+\begin{longtable}{|>{\raggedright\arraybackslash}p{0.28\textwidth}|>{\raggedright\arraybackslash}p{0.64\textwidth}|}
+\hline
+\textbf{Gain tuyến tính} & \textbf{Gain dB} \\ \hline
+\endfirsthead
+\hline
+\textbf{Gain tuyến tính} & \textbf{Gain dB} \\ \hline
+\endhead
+0,5 & −6,02 dB \\ \hline
+0,8 & −1,94 dB \\ \hline
+1 & 0 dB \\ \hline
+2 & 6,02 dB \\ \hline
+3 & 9,54 dB \\ \hline
+10 & 20 dB \\ \hline
+\end{longtable}
+
+Vì sao điện áp dùng hệ số 20 chứ không phải 10? Công suất tỷ lệ với bình phương điện áp. Từ \inlinecode{10 log10(Pout/Pin)} và cùng trở kháng suy ra \inlinecode{20 log10(Vout/Vin)}.
+
+\subsection{Ba loại “gain” dễ nhầm}
+
+\begin{enumerate}
+\item \textbf{Gain DUT}: đại lượng cần đo, ví dụ 3 lần.
+\item \textbf{Bit gain X1/X2 của MCP4822}: lựa chọn thang điện áp của DAC, không phải gain DUT.
+\item \textbf{Hệ số range x10/x100 của đường CH2}: hệ số điều hòa tín hiệu trước ADC; app phải nhân/chia bù để khôi phục Vout thật, cũng không phải gain DUT.
+\end{enumerate}
+
+Đây là câu rất dễ bị hỏi.
+
+\section{Pha và độ trễ}
+
+Hai sine cùng tần số có thể lệch nhau một góc \inlinecode{Δφ}.
+
+\begin{itemize}
+\item \inlinecode{Δφ \textgreater{} 0}: theo quy ước của code, Vout sớm pha so với Vin.
+\item \inlinecode{Δφ \textless{} 0}: Vout trễ pha.
+\item Kết quả được chuẩn hóa về \inlinecode{[-180°, 180°]} để tránh các biểu diễn tương đương như 350° và −10°.
+\end{itemize}
+
+Độ trễ tương đương:
+
+\[
+\tau=\frac{\Delta\phi}{360f}
+\]
+
+Ví dụ \inlinecode{f = 1 kHz}, lệch pha \inlinecode{36°} tương đương:
+
+\[
+\tau=\frac{36}{360\times1000}=100\ \mu s
+\]
+
+Tại sao đo pha? Gain đúng chưa đủ. Một mạch có thể khuếch đại đúng biên độ nhưng gây trễ lớn, ảnh hưởng ổn định vòng điều khiển, băng thông và chất lượng tín hiệu.
+
+Lưu ý của nguyên mẫu: pha Bode ở tần số cao còn gồm trễ của DAC, AFE, ADC, đường truyền và thuật toán. Vì vậy phải hiệu chuẩn pha theo tần số trước khi công bố như một thiết bị đo chuẩn.
+
+\section{Đồ thị Bode}
+
+Đáp ứng tần số của DUT là:
+
+\[
+H(j\omega)=\frac{V_{out}(j\omega)}{V_{in}(j\omega)}
+\]
+
+Đồ thị Bode gồm:
+
+\begin{itemize}
+\item Đồ thị magnitude: \inlinecode{20 log10 |H|} theo trục tần số logarithm.
+\item Đồ thị phase: \inlinecode{arg(H)} theo trục tần số logarithm.
+\end{itemize}
+
+\subsection{Vì sao trục tần số logarithm?}
+
+Một thiết bị thường hoạt động qua nhiều bậc tần số, ví dụ 100 Hz đến 20 kHz. Trục log cho phép nhìn đồng thời vùng thấp và cao, đồng thời phù hợp với cách mô tả octave/decade.
+
+\subsection{Đọc Bode như thế nào?}
+
+\begin{itemize}
+\item Vùng gain gần như phẳng: passband.
+\item Tần số gain giảm 3 dB so với passband thường được xem là tần số cắt của hệ bậc một.
+\item Sau tần số cắt, hệ bậc một lý tưởng giảm khoảng 20 dB/decade.
+\item Pha thay đổi cho biết trễ động học của hệ.
+\end{itemize}
+
+Trong kết quả hiện tại, gain phần cứng khoảng 9,26–9,47 dB, gần gain mục tiêu 3 lần là 9,54 dB. Đường pha tăng sai lệch rõ ở vùng cao nên chỉ nên nói: \textbf{chức năng quét Bode đã chạy, đường gain có ý nghĩa quan sát; pha cần hiệu chuẩn trước khi dùng định lượng}.
+
+\section{Lấy mẫu, Nyquist và số mẫu trên chu kỳ}
+
+Nyquist yêu cầu:
+
+\[
+F_s>2f_{max}
+\]
+
+Điều này chỉ đảm bảo về lý thuyết có thể tránh aliasing khi tín hiệu đã được giới hạn băng thông. Nó không đảm bảo waveform vẽ đẹp hoặc đo peak/phase chính xác.
+
+Số mẫu mỗi chu kỳ:
+
+\[
+N=\frac{F_s}{f}
+\]
+
+Với \inlinecode{Fs = 140077 SPS}:
+
+\begin{longtable}{|>{\raggedright\arraybackslash}p{0.20\textwidth}|>{\raggedright\arraybackslash}p{0.25\textwidth}|>{\raggedright\arraybackslash}p{0.47\textwidth}|}
+\hline
+\textbf{Tần số} & \textbf{Mẫu/chu kỳ xấp xỉ} & \textbf{Ý nghĩa} \\ \hline
+\endfirsthead
+\hline
+\textbf{Tần số} & \textbf{Mẫu/chu kỳ xấp xỉ} & \textbf{Ý nghĩa} \\ \hline
+\endhead
+100 Hz & 1401 & Dạng sóng rất mịn \\ \hline
+1 kHz & 140 & Tốt \\ \hline
+5 kHz & 28 & Có thể phân tích, ít điểm hơn \\ \hline
+10 kHz & 14 & Chỉ phù hợp nguyên mẫu \\ \hline
+20 kHz & 7 & Đủ nhận diện tần số nhưng yếu cho peak/pha \\ \hline
+\end{longtable}
+
+Nếu hội đồng hỏi “20 kHz có thỏa Nyquist không?”, trả lời: \textbf{có, vì 140 kSPS lớn hơn 40 kSPS; nhưng chỉ có khoảng 7 mẫu/chu kỳ nên độ tin cậy của peak, hình dạng và pha vẫn thấp}.
+
+\section{Aliasing}
+
+Aliasing xảy ra khi thành phần trên \inlinecode{Fs/2} bị ánh xạ xuống tần số thấp. Khi đã alias, phần mềm không thể biết đó là tần số thật hay ảnh giả chỉ từ chuỗi mẫu.
+
+Cách hạn chế:
+
+\begin{itemize}
+\item Chọn Fs đủ cao.
+\item Dùng lọc chống alias trước ADC.
+\item Giới hạn băng thông tín hiệu đầu vào.
+\end{itemize}
+
+\section{DAC bậc thang, ZOH và settling time}
+
+DAC chỉ cập nhật tại các thời điểm rời rạc rồi giữ giá trị đến lần cập nhật tiếp theo. Đây là zero-order hold (ZOH), tạo dạng bậc thang và suy hao biên độ ở tần số cao.
+
+MCP4822 còn cần khoảng 4,5 µs để đầu ra xác lập. Nếu cập nhật mỗi 5 µs thì biên thời gian chỉ còn 0,5 µs. Nghĩa là hệ thống vẫn chạy nhưng rất sát giới hạn.
+
+Phân biệt:
+
+\begin{itemize}
+\item \textbf{DAC update rate}: số điểm DAC xuất mỗi giây.
+\item \textbf{Tần số sine}: số chu kỳ sine mỗi giây.
+\item \inlinecode{N\_DAC = update\_rate / f} là số điểm DAC trên một chu kỳ.
+\end{itemize}
+
+\section{ADC 12 bit, lượng tử hóa và saturation}
+
+ADC 12 bit có 4096 mã. Độ phân giải lý tưởng của ADS7861 theo điện áp vi sai là xấp xỉ:
+
+\[
+LSB=\frac{V_{REF}}{2048}
+\]
+
+vì dữ liệu gốc là signed 12-bit với miền \inlinecode{−2048…2047}.
+
+Lượng tử hóa làm điện áp bị làm tròn theo LSB. Sai số tương đối trở nên đáng kể khi tín hiệu nhỏ.
+
+\subsection{Saturation và clipping khác nhau}
+
+\begin{itemize}
+\item \textbf{ADC saturation}: mã ADC chạm gần 0 hoặc 4095; đường đo đã hết range.
+\item \textbf{Signal clipping}: waveform có đoạn đỉnh/đáy bị bẹt. Nó có thể xảy ra ở DUT, op-amp AFE hoặc ADC.
+\item Saturation thường gây clipping, nhưng clipping có thể xuất hiện trước ADC mà mã chưa chạm đúng rail.
+\end{itemize}
+
+\section{Range và AFE}
+
+Vout đi qua op-amp đảo ghép AC và relay chọn điện trở hồi tiếp. Ba nhánh giúp đưa các mức Vout khác nhau về miền ADC.
+
+Hệ số khôi phục mặc định trong app:
+
+\begin{Verbatim}[breaklines=true,breakanywhere=true,fontsize=\small]
+range 0,3 V:  -10/47
+range 3,3 V:  -10/4,7
+range 10 V:   -10/1,5
+\end{Verbatim}
+
+Dấu âm bù cho op-amp đảo. Đây là hệ số của đường đo CH2, không phải gain DUT.
+
+Relay dùng break-before-make: tắt tất cả relay, chờ, sau đó bật relay mới. Mục đích là tránh hai nhánh hồi tiếp cùng đóng.
+
+\section{Calibration}
+
+Calibration tuyến tính dùng:
+
+\[
+V_{true}=mV_{raw}+c
+\]
+
+\begin{itemize}
+\item \inlinecode{m}: bù sai số gain.
+\item \inlinecode{c}: bù offset.
+\end{itemize}
+
+Mỗi range CH2 có cặp hệ số riêng. CH1 là đường trực tiếp nên chỉ dùng calibration CH1 range 0.
+
+Calibration tuyến tính không bù được hoàn toàn:
+
+\begin{itemize}
+\item Sai số thay đổi theo tần số.
+\item Trễ pha.
+\item Méo phi tuyến.
+\item Jitter.
+\item Clipping.
+\end{itemize}
+
+\section{Nhiễu và sine-fit residual}
+
+Sau khi khớp sine, phần dư là:
+
+\[
+e[n]=v[n]-v_{fit}[n]
+\]
+
+RMS của phần dư được app gọi là \inlinecode{noise\_rms}. Nó gồm nhiễu, hài, sai tần số mô hình và mọi thành phần không được mô hình sine giải thích. Vì vậy không nên khẳng định đây là nhiễu thuần túy hoặc THD+N chuẩn phòng thí nghiệm.
+
+\section{PASS, FAIL và WARNING}
+
+\begin{itemize}
+\item \textbf{PASS}: spec đạt, dữ liệu đầy đủ, không clipping/saturation và điều kiện đo đủ tin cậy.
+\item \textbf{FAIL}: ít nhất một yêu cầu kỹ thuật không đạt, mất dữ liệu hoặc lỗi truyền thông.
+\item \textbf{WARNING}: chưa thấy vi phạm spec chính nhưng điều kiện đo hạn chế độ tin cậy.
+\end{itemize}
+
+Điểm thiết kế hay của dự án: gain đúng không đồng nghĩa kết quả tổng phải PASS. Ví dụ 20 kHz/200 kSPS có 10 mẫu/chu kỳ, gain có thể đúng nhưng vẫn WARNING.
+
+\clearpage
+
+\clearpage
+\part{PHẦN 2 — GIẢI THÍCH CÔNG THỨC TRONG BÁO CÁO}
+\setcounter{section}{0}
+
+\section{Mean và RMS AC}
+
+\[
+\bar v=\frac{1}{M}\sum_{n=0}^{M-1}v[n]
+\]
+
+\inlinecode{M} là số mẫu. Mean là mức DC trung bình.
+
+\[
+V_{RMS,AC}=\sqrt{\frac{1}{M}\sum_{n=0}^{M-1}(v[n]-\bar v)^2}
+\]
+
+Các bước code thực hiện:
+
+\begin{enumerate}
+\item Tính mean.
+\item Trừ mean khỏi từng mẫu.
+\item Bình phương.
+\item Lấy trung bình.
+\item Lấy căn.
+\end{enumerate}
+
+Ví dụ \inlinecode{v(t)=0,3sin(ωt)+0,1}: mean = 0,1 V; RMS AC = \inlinecode{0,3/√2 ≈ 0,2121 V}.
+
+\section{Gain tuyến tính và gain dB}
+
+\[
+G_{lin}=\frac{V_{out,RMS,AC}}{V_{in,RMS,AC}}
+\]
+
+Nếu Vout RMS = 0,4243 V và Vin RMS = 0,2121 V thì gain = 2.
+
+\[
+G_{dB}=20\log_{10}(G_{lin})
+\]
+
+Gain error:
+
+\[
+E_G=G_{measured,dB}-G_{target,dB}
+\]
+
+Đạt nếu \inlinecode{|E\_G| ≤ tolerance}.
+
+\section{Sine fit}
+
+Báo cáo viết:
+
+\[
+v(t)=A\sin(2\pi ft+\phi)+C+e(t)
+\]
+
+Code không giải phi tuyến trực tiếp. Nó biến đổi:
+
+\[
+v(t)=a\sin(2\pi ft)+b\cos(2\pi ft)+C
+\]
+
+rồi dùng least squares tìm \inlinecode{a}, \inlinecode{b}, \inlinecode{C}. Sau đó:
+
+\[
+A=\sqrt{a^2+b^2},\qquad \phi=\operatorname{atan2}(b,a)
+\]
+
+Đây là lý do code tạo ma trận ba cột \inlinecode{sin}, \inlinecode{cos}, \inlinecode{1} trong \inlinecode{\_sine\_fit()}.
+
+Ưu điểm: tận dụng toàn bộ mẫu và ước lượng amplitude/phase tốt hơn chỉ lấy max/min. Nhược điểm: cần biết tần số fit tương đối đúng và tín hiệu phải gần sine.
+
+\section{Pha và chuẩn hóa góc}
+
+\[
+\Delta\phi=\phi_{out}-\phi_{in}
+\]
+
+Code chuẩn hóa:
+
+\begin{Verbatim}[breaklines=true,breakanywhere=true,fontsize=\small]
+(phase + 180) % 360 - 180
+\end{Verbatim}
+
+Ví dụ \inlinecode{350°} trở thành \inlinecode{−10°}, vì hai giá trị mô tả cùng một độ lệch vật lý.
+
+Phase error cũng được chuẩn hóa theo cách tương tự so với phase mục tiêu.
+
+\section{Độ trễ}
+
+\[
+\tau=\frac{\Delta\phi}{360f}
+\]
+
+Nếu cần µs thì nhân \inlinecode{10\textasciicircum{}6}.
+
+Lưu ý: đây là độ trễ tương đương tại một tần số, không nhất thiết bằng group delay trên toàn dải.
+
+\section{Số mẫu trên chu kỳ}
+
+\[
+N=\frac{F_s}{f}
+\]
+
+Ví dụ \inlinecode{Fs=140077}, \inlinecode{f=20 kHz}:
+
+\[
+N\approx 7,00
+\]
+
+Pha cách nhau giữa hai mẫu là:
+
+\[
+\Delta\theta=\frac{360°}{N}
+\]
+
+Với N = 7, mỗi mẫu cách nhau hơn 51°, nên vị trí đỉnh và pha rất nhạy.
+
+\section{Chu kỳ và khoảng lấy mẫu}
+
+\[
+T_{signal}=\frac{1}{f},\qquad T_s=\frac{1}{F_s}
+\]
+
+Báo cáo đổi sang µs bằng cách dùng \inlinecode{10\textasciicircum{}6} ở tử.
+
+\section{Sai số bỏ lỡ đỉnh}
+
+Trường hợp xấu nhất, mẫu gần đỉnh bị lệch nửa bước lấy mẫu. Khoảng pha đó là \inlinecode{π/N}, nên biên độ mẫu được chỉ còn \inlinecode{A cos(π/N)}.
+
+\[
+E_{peak}=\left(1-\cos\frac{\pi}{N}\right)100\%
+\]
+
+Với N = 10:
+
+\[
+E_{peak}\approx 4,894\%
+\]
+
+Đây là sai số xấu nhất của cách đo peak bằng mẫu rời rạc, không phải sai số bắt buộc của sine fit.
+
+\section{ZOH droop}
+
+Đáp ứng biên độ của zero-order hold có dạng sinc. Tại tần số tín hiệu:
+
+\[
+E_{ZOH}=\left(1-\frac{\sin(\pi/N)}{\pi/N}\right)100\%
+\]
+
+N càng lớn, suy hao càng nhỏ. Công thức này đánh giá lý tưởng của quá trình giữ mẫu, chưa bao gồm settling, sai số DAC và mạch lọc.
+
+\section{Settling margin}
+
+\[
+T_{margin}=T_s-T_{settling}
+\]
+
+Với Fs = 200 kSPS: \inlinecode{Ts = 5 µs}; MCP4822 settling khoảng 4,5 µs; margin = 0,5 µs nên code báo borderline.
+
+Nếu Fs = 500 kSPS: \inlinecode{Ts = 2 µs}, margin = −2,5 µs; DAC chưa kịp ổn định trước lần cập nhật tiếp theo.
+
+\section{Đổi mã ADC sang điện áp — điểm phải trả lời cẩn thận}
+
+Báo cáo đang có công thức đơn giản hóa theo miền 3,3 V:
+
+\[
+V=m_r\left(\frac{code}{4095}3,3-1,65\right)+c_r
+\]
+
+Nhưng \textbf{source hiện tại của ADS7861 không dùng đúng công thức này}. Source dùng dữ liệu signed 12-bit, chuyển sang offset-binary để truyền:
+
+\[
+raw_{signed}=code-2048
+\]
+
+\[
+V_{shifted}=\frac{raw_{signed}}{2048}V_{REF},\qquad V_{REF}=2,5V
+\]
+
+sau đó:
+
+\[
+V=mV_{shifted}+c
+\]
+
+Trong desktop:
+
+\begin{itemize}
+\item CH1 còn cộng thêm 2,5 V vì đây là đường Vin trực tiếp có bias theo cấu hình hiện tại.
+\item CH2 áp hệ số range của AFE.
+\end{itemize}
+
+Nếu bị hỏi, nên trả lời: “Công thức 3,3 V trong báo cáo là biểu diễn tổng quát/đơn giản hóa. Pipeline chạy thật bám ADS7861 VREF 2,5 V và midpoint 2048 như trong \inlinecode{calibration\_adc\_code\_to\_voltage()} và \inlinecode{raw\_adc\_to\_volts()}.” Sau bảo vệ nên sửa báo cáo để hai phần hoàn toàn thống nhất.
+
+\section{Gain của DUT không đảo}
+
+\[
+A_v=1+\frac{R_f}{R_g}
+\]
+
+Với \inlinecode{Rf = 20 kΩ}, \inlinecode{Rg = 10 kΩ}:
+
+\[
+A_v=3
+\]
+
+\[
+G_{dB}=20\log_{10}(3)\approx9,54dB
+\]
+
+Công thức chỉ đúng khi op-amp đấu không đảo, có hồi tiếp âm, chưa clipping và còn đủ gain-bandwidth/output swing.
+
+\section{Khôi phục DC CH2}
+
+AFE CH2 ghép AC nên không đo trực tiếp mức DC thật của Vout. Khi bật tùy chọn khôi phục, app giả sử DUT tuyến tính đi qua gốc:
+
+\[
+V_{out}=G V_{in}
+\]
+
+App suy ra độ lớn gain từ năng lượng AC, lấy dấu từ correlation rồi ước lượng:
+
+\[
+V_{out,DC}\approx G_{signed}V_{in,DC}
+\]
+
+Đây là \textbf{giá trị suy ra theo mô hình}, không phải DC đo trực tiếp. Không nên dùng nó để công bố đặc tính DC của một DUT có offset riêng.
+
+\section{CRC/XOR của frame}
+
+Source gọi hàm là CRC nhưng phép tính hiện tại là XOR tất cả byte:
+
+\[
+checksum=b_0\oplus b_1\oplus\cdots\oplus b_{L-1}
+\]
+
+Ưu điểm: rất nhẹ. Nhược điểm: yếu hơn CRC-16/CRC-32; một số tổ hợp nhiều lỗi bit có thể triệt tiêu nhau. Sequence number mới là cơ chế phát hiện mất cả block.
+
+\clearpage
+
+\clearpage
+\part{PHẦN 3 — GIẢI THÍCH SOURCE CODE}
+\setcounter{section}{0}
+
+\section{Nên đọc source theo thứ tự nào?}
+
+Không đọc từ trên xuống theo thư mục. Hãy đọc theo luồng dữ liệu:
+
+\begin{enumerate}
+\item \inlinecode{amplifier\_analyzer\_fw/Core/Src/main.c}
+\item \inlinecode{command\_parser.c}
+\item \inlinecode{test\_controller.c}
+\item \inlinecode{mcp4822.c} và \inlinecode{ads7861.c}
+\item \inlinecode{adc\_stream.c}
+\item \inlinecode{protocol.c}
+\item \inlinecode{range\_control.c} và \inlinecode{calibration.c}
+\item \inlinecode{app\_desktop/stream\_reader\_process.py}
+\item \inlinecode{app\_desktop/signal\_analysis.py}
+\item \inlinecode{app\_desktop/signal\_analyzer.py}
+\item Các file \inlinecode{test\_*.py}
+\end{enumerate}
+
+\section{Firmware: vai trò từng module}
+
+\begin{longtable}{|>{\raggedright\arraybackslash}p{0.28\textwidth}|>{\raggedright\arraybackslash}p{0.64\textwidth}|}
+\hline
+\textbf{File} & \textbf{Vai trò} \\ \hline
+\endfirsthead
+\hline
+\textbf{File} & \textbf{Vai trò} \\ \hline
+\endhead
+\inlinecode{main.c} & Khởi tạo clock, GPIO, SPI, USB và gọi service trong vòng lặp chính \\ \hline
+\inlinecode{command\_parser.c} & Nhận lệnh ASCII, parse tham số, gọi module tương ứng \\ \hline
+\inlinecode{test\_controller.c} & Giữ cấu hình phép đo, tạo LUT DAC, start/stop DAC và finite capture \\ \hline
+\inlinecode{mcp4822.c} & Đóng frame 16-bit và điều khiển DAC MCP4822 \\ \hline
+\inlinecode{ads7861.c} & Điều khiển mode, conversion, đọc/parse hai word ADC \\ \hline
+\inlinecode{adc\_stream.c} & Pipeline timer–SPI–DMA, ring buffer và stream USB liên tục \\ \hline
+\inlinecode{measurement\_engine.c} & Tính mean, Vpp, RMS, gain và pha phía firmware \\ \hline
+\inlinecode{range\_control.c} & Điều khiển ba relay manual/auto, break-before-make \\ \hline
+\inlinecode{calibration.c} & Hệ số DAC/ADC, đổi code–voltage và lưu Flash \\ \hline
+\inlinecode{protocol.c} & Gửi frame nhị phân, checksum XOR, chờ USB TX \\ \hline
+\inlinecode{usbd\_cdc\_if.c} & Cầu nối USB CDC của STM32 HAL với parser \\ \hline
+\end{longtable}
+
+\section{\inlinecode{main.c}: chương trình bắt đầu ở đâu?}
+
+Trình tự khởi tạo:
+
+\begin{Verbatim}[breaklines=true,breakanywhere=true,fontsize=\small]
+HAL_Init
+→ SystemClock_Config (72 MHz)
+→ GPIO
+→ SPI1 cho DAC
+→ SPI2 cho ADC
+→ USB re-enumeration
+→ USB CDC
+→ test_controller_init
+→ command_parser_init
+→ mcp4822_init
+→ ads7861_init + self-test parse
+→ adc_stream_init
+\end{Verbatim}
+
+Vòng lặp chính production chỉ chạy các service nhẹ:
+
+\begin{Verbatim}[breaklines=true,breakanywhere=true,fontsize=\small]
+command_parser_process();
+adc_stream_usb_service();
+test_controller_service();
+\end{Verbatim}
+
+Ý nghĩa kiến trúc:
+
+\begin{itemize}
+\item Việc đúng thời gian nằm trong timer/DMA interrupt.
+\item Main loop xử lý command và đóng/gửi USB.
+\item Không thực hiện phép đọc blocking dài trong ISR.
+\end{itemize}
+
+\section{Các build mode}
+
+\inlinecode{config.h}/PlatformIO cho phép tách lỗi:
+
+\begin{itemize}
+\item Production/NORMAL: chạy toàn hệ thống.
+\item USB SIM: không cần analog, sinh dữ liệu giả để kiểm tra protocol/app.
+\item MCP4822 test: chỉ kiểm tra DAC.
+\item Các mode ADC, SPI loopback, calibration Flash: phục vụ bring-up.
+\end{itemize}
+
+Lợi ích: nếu app không nhận dữ liệu, có thể phân biệt lỗi USB, DAC, ADC hay chuỗi analog thay vì debug toàn hệ thống cùng lúc.
+
+\section{\inlinecode{command\_parser.c}: giao thức điều khiển}
+
+USB callback không thực thi toàn bộ command; nó gom dòng lệnh. Main loop gọi parser để tránh làm việc nặng trong interrupt USB.
+
+Các lệnh quan trọng:
+
+\begin{longtable}{|>{\raggedright\arraybackslash}p{0.28\textwidth}|>{\raggedright\arraybackslash}p{0.64\textwidth}|}
+\hline
+\textbf{Lệnh} & \textbf{Chức năng} \\ \hline
+\endfirsthead
+\hline
+\textbf{Lệnh} & \textbf{Chức năng} \\ \hline
+\endhead
+\inlinecode{PING}, \inlinecode{INFO} & Kiểm tra kết nối và firmware \\ \hline
+\inlinecode{CONFIG:...} & Cấu hình waveform, f, amplitude, offset, DAC gain, Fs, samples \\ \hline
+\inlinecode{START}, \inlinecode{STOP} & Khởi động/dừng DAC và phép đo \\ \hline
+\inlinecode{GET\_RESULT} & Nhận kết quả JSON phía firmware \\ \hline
+\inlinecode{GET\_SAMPLES} & Nhận finite frame nhị phân \\ \hline
+\inlinecode{ADC\_USB\_STREAM\_START:FS=...} & Bắt đầu ADC stream liên tục \\ \hline
+\inlinecode{ADC\_STREAM\_STOP/STATUS} & Dừng/đọc thống kê stream \\ \hline
+\inlinecode{SET\_RANGE}, \inlinecode{GET\_RANGE} & Chọn relay range \\ \hline
+\inlinecode{GET\_CALIB}, \inlinecode{SET\_CALIB}, \inlinecode{SAVE\_CALIB} & Quản lý hiệu chuẩn \\ \hline
+\end{longtable}
+
+Các lệnh \inlinecode{ADC\_GPIO\_DIAG}, \inlinecode{ADC\_READ\_ONCE}, trace… là lệnh chẩn đoán bring-up, không phải luồng đo bình thường.
+
+\section{\inlinecode{test\_controller.c}: cấu hình phép đo và DAC}
+
+\inlinecode{current\_config} giữ:
+
+\begin{itemize}
+\item Dạng sóng.
+\item Tần số.
+\item Biên độ và offset.
+\item DAC gain X1/X2.
+\item Fs.
+\item Số mẫu finite capture.
+\end{itemize}
+
+\subsection{Tạo LUT}
+
+\inlinecode{test\_controller\_generate\_lut()} chọn số điểm:
+
+\begin{Verbatim}[breaklines=true,breakanywhere=true,fontsize=\small]
+N = DAC_MAX_DMA_RATE / frequency
+giới hạn 4 ≤ N ≤ 256
+\end{Verbatim}
+
+Sau đó tính sine/square/triangle/DC, cộng bias 1,65 V và chuyển điện áp sang mã DAC qua calibration.
+
+DAC stream dùng TIM3 + DMA SPI1. Một LUT đúng bằng một chu kỳ; timer phát tuần hoàn LUT nên tần số thật là \inlinecode{update\_rate/N}.
+
+\subsection{\inlinecode{test\_controller\_configure()}}
+
+Hàm kiểm tra:
+
+\begin{itemize}
+\item Samples hữu hạn không vượt 256.
+\item Tần số hợp lệ và không vượt khả năng LUT/DAC.
+\item Fs không nhỏ hơn tần số.
+\item Gain DAC hợp lệ.
+\item Biên độ + offset không vượt miền unipolar của DAC.
+\end{itemize}
+
+\subsection{\inlinecode{START}}
+
+\begin{itemize}
+\item Đảm bảo DAC đang phát.
+\item Trong finite mode, đọc một block ADC.
+\item Chạy auto-range nếu cần và thu lại sau khi đổi relay.
+\item Gọi measurement engine.
+\end{itemize}
+
+Live stream của app sau đó dùng pipeline \inlinecode{adc\_stream.c}, không lặp \inlinecode{GET\_SAMPLES} liên tục.
+
+\section{\inlinecode{mcp4822.c}: DAC hoạt động thế nào?}
+
+MCP4822 nhận word 16-bit gồm:
+
+\begin{itemize}
+\item Chọn kênh A/B.
+\item Bit gain.
+\item Shutdown/active.
+\item 12 bit dữ liệu.
+\end{itemize}
+
+Driver làm ba việc chính:
+
+\begin{enumerate}
+\item \inlinecode{mcp4822\_build\_frame()} tạo word đúng bitfield.
+\item Hàm write giữ CS thấp trong cả 16 clock SPI.
+\item DMA path phát liên tục mà không bắt CPU ghi từng mẫu.
+\end{enumerate}
+
+LDAC dùng để chốt đầu ra. Bit gain của MCP4822 chỉ đổi thang DAC, hoàn toàn độc lập với gain DUT.
+
+\section{\inlinecode{ads7861.c}: ADC hai kênh}
+
+ADS7861 xuất word có status và dữ liệu signed 12-bit. Driver:
+
+\begin{itemize}
+\item Cấu hình M0/M1 và chọn cặp A0/B0.
+\item Tạo xung RD/CONVST.
+\item Đọc tuần tự word A và B qua Serial Data A.
+\item Parse status, bỏ các bit không phải dữ liệu.
+\item Sign-extend dữ liệu 12-bit.
+\item Kiểm tra frame hợp lệ.
+\end{itemize}
+
+Theo wiring hiện tại:
+
+\begin{itemize}
+\item ADS B0 là Vin.
+\item ADS A0 là Vout.
+\end{itemize}
+
+Khi đóng gói cho app, firmware đổi two’s-complement thành offset-binary để code 2048 tương ứng 0 V vi sai.
+
+\section{\inlinecode{adc\_stream.c}: phần khó nhất của firmware}
+
+\subsection{Mục tiêu}
+
+Thu hai kênh đều theo timer mà không để USB hoặc GUI làm chậm nhịp ADC.
+
+\subsection{Luồng thời gian}
+
+\begin{Verbatim}[breaklines=true,breakanywhere=true,fontsize=\small]
+TIM2 update
+→ phát xung conversion
+→ SPI2 RX/TX DMA đọc word A
+→ half-transfer interrupt chuyển sang word B
+→ hoàn thành cặp A/B
+→ lưu ring buffer
+→ main loop đóng frame USB khi đủ 512 cặp
+\end{Verbatim}
+
+\subsection{Ring buffer}
+
+\begin{itemize}
+\item Kích thước: 2048 cặp mẫu.
+\item Chunk USB: 512 cặp.
+\item Producer: ISR ADC.
+\item Consumer: main loop USB service.
+\end{itemize}
+
+Nếu producer bắt kịp consumer, không mất mẫu. Nếu ring đầy, code bỏ nguyên chunk cũ và tăng \inlinecode{ring\_overwrite}; sequence sẽ nhảy để host phát hiện.
+
+\subsection{Tại sao dùng sequence number?}
+
+CRC chỉ biết frame nhận được có lỗi byte hay không. Sequence biết giữa hai frame có bị mất cả block hay không.
+
+\subsection{Frame stream hiện tại}
+
+\begin{Verbatim}[breaklines=true,breakanywhere=true,fontsize=\small]
+AA BB | type 04 | payload length
+sequence: 4 byte
+actual Fs: 4 byte
+count: 2 byte
+data: 512 × 3 byte
+XOR: 1 byte
+\end{Verbatim}
+
+Hai kênh 12 bit được pack thành 24 bit = 3 byte/cặp, giảm từ 4 byte/cặp xuống 3 byte/cặp.
+
+\subsection{Vì sao đạt khoảng 140 kSPS thay vì luôn 200 kSPS?}
+
+Giới hạn thực tế gồm thời gian SPI ADC, ngắt timer/DMA, đóng frame, USB FS, RAM nhỏ và khả năng host drain COM. 140 kSPS là mức đã kiểm chứng ổn định end-to-end với GUI hiện tại; 200 kSPS từng có nguy cơ sequence gap.
+
+\section{\inlinecode{measurement\_engine.c}}
+
+Firmware tính:
+
+\begin{itemize}
+\item Mean, min, max, Vpp.
+\item RMS AC.
+\item Gain dB.
+\item Pha bằng cross-correlation theo lag nguyên.
+\end{itemize}
+
+Pha firmware bị lượng tử theo một mẫu:
+
+\[
+\Delta\phi_{step}=360\frac{f}{F_s}=\frac{360}{N}
+\]
+
+Vì vậy desktop tính lại pha bằng sine fit trên dữ liệu thô để có độ phân giải tốt hơn. Nếu bị hỏi “tại sao tính hai lần?”, trả lời: firmware cho kết quả nhanh/độc lập; desktop có tài nguyên lớn hơn và dùng thuật toán ổn định hơn cho hiển thị chính.
+
+\section{\inlinecode{range\_control.c}}
+
+Manual mode bật range do người dùng chọn. Auto mode quan sát khoảng cách mã ADC tới midpoint và số mẫu gần rail:
+
+\begin{itemize}
+\item Gần rail → tăng range.
+\item Tín hiệu quá nhỏ → giảm range.
+\item Sau khi đổi relay → chờ xác lập và thu lại.
+\end{itemize}
+
+Break-before-make tránh đóng hai relay đồng thời.
+
+\section{\inlinecode{calibration.c}}
+
+\inlinecode{calibration\_reset()} đặt hệ số mặc định. \inlinecode{calibration\_save()} ghi struct vào trang Flash cuối.
+
+Hai hàm quan trọng:
+
+\begin{itemize}
+\item \inlinecode{calibration\_voltage\_to\_dac\_code()}: điện áp mong muốn → mã DAC.
+\item \inlinecode{calibration\_adc\_code\_to\_voltage()}: mã offset-binary → điện áp đã bù range.
+\end{itemize}
+
+Hạn chế hiện tại: dữ liệu Flash chưa có magic/version/CRC mạnh. Code mới chỉ kiểm tra trang có trắng \inlinecode{0xFFFFFFFF} hay không.
+
+\section{\inlinecode{protocol.c} và USB CDC}
+
+\inlinecode{protocol\_send\_raw\_async()} cố gửi frame mà không block quá lâu. Double buffer trong stream cho phép một frame đang truyền trong khi frame kia được xây dựng.
+
+Tên \inlinecode{protocol\_calculate\_crc()} dễ gây hiểu nhầm: thuật toán là XOR 1 byte, không phải CRC đa thức.
+
+\section{Desktop: cấu trúc tổng thể}
+
+\begin{longtable}{|>{\raggedright\arraybackslash}p{0.28\textwidth}|>{\raggedright\arraybackslash}p{0.64\textwidth}|}
+\hline
+\textbf{File} & \textbf{Vai trò} \\ \hline
+\endfirsthead
+\hline
+\textbf{File} & \textbf{Vai trò} \\ \hline
+\endhead
+\inlinecode{signal\_analyzer.py} & GUI, serial control, worker, plot, export \\ \hline
+\inlinecode{signal\_analysis.py} & Toàn bộ DSP và logic PASS/FAIL/WARNING có thể test độc lập \\ \hline
+\inlinecode{stream\_reader\_process.py} & Tiến trình riêng sở hữu COM và đọc stream tốc độ cao \\ \hline
+\inlinecode{test\_signal\_analysis.py} & Unit test công thức, range và DSP \\ \hline
+\inlinecode{test\_bode\_sweep.py} & Test chọn Fs Bode và decode frame packed 12-bit \\ \hline
+\inlinecode{\_capture\_report\_tests.py} & Tự động chạy cấu hình và chụp ảnh cho báo cáo \\ \hline
+\end{longtable}
+
+\section{\inlinecode{stream\_reader\_process.py}: tại sao là process riêng?}
+
+Nếu GUI vừa render plot vừa đọc COM trong cùng process, Python GIL và callback GUI có thể khiến COM không được drain kịp. Windows tạo back-pressure về STM32 và làm mất block.
+
+Giải pháp:
+
+\begin{enumerate}
+\item Process con mở COM độc quyền.
+\item Gửi \inlinecode{START} và \inlinecode{ADC\_USB\_STREAM\_START}.
+\item Đọc, kiểm header, length, XOR và sequence.
+\item Decode packed 12-bit.
+\item Gom nhiều frame thành block 4096 mẫu.
+\item Gửi block về GUI qua socket localhost bằng message có length prefix.
+\end{enumerate}
+
+Nhờ vậy việc vẽ chậm không trực tiếp chặn reader COM.
+
+\section{\inlinecode{signal\_analysis.py}: DSP chính}
+
+\subsection{\inlinecode{calculate\_sampling\_quality()}}
+
+Tính T, Ts, N, peak error, ZOH droop, settling margin và tạo warning.
+
+Ngưỡng hiện tại:
+
+\begin{itemize}
+\item \inlinecode{N \textless{} 10}: sampling too low.
+\item \inlinecode{10 ≤ N \textless{} 25}: POC only.
+\item Peak error \textgreater{} 1\%: cảnh báo.
+\item Settling margin \textless{} 0: DAC not settled.
+\item Margin từ 0 đến dưới 1 µs: borderline.
+\end{itemize}
+
+\subsection{\inlinecode{raw\_adc\_to\_volts()} và \inlinecode{convert\_measurement\_channels()}}
+
+\begin{itemize}
+\item Trừ midpoint 2048.
+\item Nhân VREF 2,5 V.
+\item CH1 dùng calibration trực tiếp và cộng bias.
+\item CH2 dùng hệ số range.
+\end{itemize}
+
+\subsection{\inlinecode{\_positive\_zero\_crossing\_frequency()}}
+
+\begin{itemize}
+\item Trừ mean.
+\item Tìm cặp mẫu đi từ âm/0 sang dương.
+\item Nội suy vị trí crossing.
+\item Lấy median chu kỳ.
+\end{itemize}
+
+\subsection{\inlinecode{\_sine\_fit()}}
+
+Least squares trên sin/cos/constant để tìm amplitude, phase, offset và residual.
+
+\subsection{\inlinecode{analyze\_channel()}}
+
+Tạo toàn bộ metric một kênh. Saturation dựa trên raw code gần rail. Clipping dựa trên chuỗi ít nhất năm mẫu liên tiếp gần đỉnh hoặc đáy; điều kiện span giúp tránh coi nhiễu lượng tử của tín hiệu gần phẳng là clipping.
+
+\subsection{\inlinecode{analyze\_dut()}}
+
+\begin{itemize}
+\item Gain = RMSout/RMSin.
+\item Gain error so với target.
+\item Phase = phase CH2 − phase CH1.
+\item Phase error so với target.
+\item Tính delay.
+\end{itemize}
+
+\subsection{\inlinecode{evaluate\_pass\_fail()}}
+
+Ưu tiên failure. Nếu không có failure nhưng có sampling warning thì WARNING. Chỉ khi không có cả hai mới PASS.
+
+\section{\inlinecode{signal\_analyzer.py}: GUI và worker}
+
+\subsection{\inlinecode{SignalAnalyzerApp}}
+
+Quản lý widget, serial, cấu hình DUT, calibration, plot, history, export và trạng thái.
+
+\subsection{\inlinecode{LiveStreamWorker}}
+
+Khởi động process reader, nhận block qua socket rồi phát Qt signal về GUI.
+
+\subsection{Xử lý một block}
+
+\begin{Verbatim}[breaklines=true,breakanywhere=true,fontsize=\small]
+raw code
+→ convert channels
+→ tùy chọn khôi phục DC CH2
+→ analyze_channel(CH1/CH2)
+→ analyze_dut
+→ calculate_sampling_quality
+→ evaluate_pass_fail
+→ cập nhật waveform và bảng kết quả
+\end{Verbatim}
+
+\subsection{Downsampling hiển thị}
+
+App có thể nhận rất nhiều mẫu nhưng không vẽ tất cả. Downsampling chỉ phục vụ render; DSP vẫn dùng block dữ liệu thật. Các index được giữ theo timestamp thật để không tạo ramp giả.
+
+\section{Bode worker}
+
+Mỗi điểm Bode phần cứng:
+
+\begin{enumerate}
+\item Dừng stream cũ và DAC.
+\item Gửi CONFIG với \inlinecode{SAMPLES=256}.
+\item START DAC.
+\item Chờ 5 chu kỳ, tối thiểu 20 ms và tối đa 300 ms.
+\item Start ADC USB stream với \inlinecode{Fs = min(max(50f, 5 kSPS), 140 kSPS)}.
+\item Bỏ frame đầu sau chuyển trạng thái.
+\item Thu 1024 mẫu, kiểm CRC và sequence.
+\item Đổi code sang điện áp.
+\item Sine fit hai kênh, tính gain và pha.
+\item Chỉ vẽ điểm hợp lệ; không dùng sentinel −99 dB.
+\end{enumerate}
+
+Không cần thay firmware vì app tái sử dụng \inlinecode{CONFIG}, \inlinecode{START} và \inlinecode{ADC\_USB\_STREAM\_START} hiện có.
+
+\section{Unit test chứng minh điều gì?}
+
+\inlinecode{test\_signal\_analysis.py} kiểm tra:
+
+\begin{itemize}
+\item Các case N/peak/ZOH/settling.
+\item RMS AC loại offset.
+\item Gain 2 và pha −30°.
+\item Gain/phase DUT độc lập với range.
+\item Warning không bị biến thành PASS.
+\item Đổi mã ADS7861.
+\item Range chỉ tác động CH2.
+\item Downsampling giữ timestamp.
+\end{itemize}
+
+\inlinecode{test\_bode\_sweep.py} kiểm tra:
+
+\begin{itemize}
+\item Fs Bode được chọn và cap đúng 140 kSPS.
+\item Decode đúng frame packed 12-bit cho cả hai kênh.
+\end{itemize}
+
+Unit test chứng minh thuật toán với dữ liệu xác định trước, không thay thế phép hiệu chuẩn phần cứng.
+
+\section{Luồng end-to-end nên trình bày khi bảo vệ}
+
+\subsection{Đo live}
+
+\begin{Verbatim}[breaklines=true,breakanywhere=true,fontsize=\small]
+Người dùng cấu hình app
+→ USB CONFIG
+→ STM32 tạo LUT và chạy DAC DMA
+→ DUT khuếch đại
+→ AFE chọn range
+→ TIM2 kích ADS7861
+→ SPI2 DMA thu A/B
+→ ring buffer
+→ packed USB frame + sequence + XOR
+→ process desktop đọc COM
+→ đổi code sang volt
+→ DSP
+→ waveform + DUT table + PASS/FAIL/WARNING
+\end{Verbatim}
+
+\subsection{Quét Bode}
+
+\begin{Verbatim}[breaklines=true,breakanywhere=true,fontsize=\small]
+dãy tần số log
+→ lặp cấu hình từng f
+→ chờ xác lập
+→ thu block
+→ sine fit Vin/Vout
+→ gain dB + phase
+→ vẽ hai đường theo trục log
+\end{Verbatim}
+
+\clearpage
+
+\clearpage
+\part{CÂU HỎI HỘI ĐỒNG DỄ HỎI}
+\setcounter{section}{0}
+
+\section{Tại sao không dùng ADC/DAC nội STM32?}
+
+MCP4822 có DAC 12-bit, tham chiếu nội và giao tiếp SPI rõ ràng; ADS7861 có hai ADC lấy mẫu đồng thời, phù hợp đo pha. Việc tách ngoại vi cũng phản ánh đúng bài toán thiết kế thiết bị đo và cho phép kiểm soát timing/range tốt hơn.
+
+\section{Tại sao chọn STM32F103?}
+
+Đủ cho nguyên mẫu: 72 MHz, SPI, timer, DMA và USB FS, phổ biến và chi phí thấp. Hạn chế là RAM 20 kB và biên xử lý/USB nhỏ khi muốn tăng lên 500 kSPS, nên hướng nâng cấp là STM32H7 hoặc nền tảng mạnh hơn.
+
+\section{Tại sao phải lấy mẫu đồng thời?}
+
+Vì nếu Vin và Vout đo lệch thời điểm, khoảng lệch đó tạo pha giả \inlinecode{360fΔt}. ADC đồng thời giảm sai số này.
+
+\section{Tại sao không chỉ dùng Vpp để tính gain?}
+
+Vpp nhạy với việc bỏ lỡ đỉnh, nhiễu và clipping. RMS AC dùng toàn bộ mẫu, loại offset và ổn định hơn. Sine fit còn ước lượng amplitude/phase từ toàn bộ block.
+
+\section{20 kHz có đo được không?}
+
+Có thể nhận diện tần số và ước lượng gain, vì Fs khoảng 140 kSPS thỏa Nyquist. Tuy nhiên chỉ có 7 mẫu/chu kỳ, nên peak, waveform và pha có độ tin cậy thấp; hệ thống phải cảnh báo và chưa được coi là thiết bị chuẩn tại điểm này.
+
+\section{Vì sao gain Bode đúng mà pha cao tần lệch?}
+
+Gain từ tỷ số RMS/sine amplitude ít nhạy với trễ cố định. Pha cộng dồn trễ của DAC, AFE, ADC, timing hai đường và thuật toán; pha cần được đo loopback và bù theo tần số.
+
+\section{Tại sao range không phải gain DUT?}
+
+Range chỉ là hệ số điều hòa Vout để phù hợp miền ADC. App dùng hệ số calibration nghịch để khôi phục Vout thật rồi mới chia cho Vin. Gain DUT là tỷ số sau khôi phục.
+
+\section{Vì sao có FAIL dù gain nằm trong dung sai?}
+
+Kết quả tổng kiểm tra nhiều tiêu chí: gain, pha, tần số, biên độ, clipping, saturation, communication, data loss và chất lượng lấy mẫu. Một tiêu chí khác fail thì trạng thái tổng vẫn FAIL.
+
+\section{CRC hiện tại có mạnh không?}
+
+Không. Hiện tại là XOR một byte, nhẹ nhưng khả năng phát hiện lỗi hạn chế. Sequence phát hiện mất block; hướng cải tiến là CRC-16/CRC-32.
+
+\section{Đóng góp chính của đồ án là gì?}
+
+Thiết kế và tích hợp được chuỗi hoàn chỉnh từ phát, DUT, AFE/range, ADC đồng thời, firmware timer–SPI–DMA, USB stream đến ứng dụng phân tích và đánh giá độ tin cậy của phép đo. Kết quả hiện tại là nguyên mẫu chức năng, chưa thay thế thiết bị đo đã hiệu chuẩn.
+
+\section{Hạn chế lớn nhất?}
+
+\begin{itemize}
+\item Khoảng 140 kSPS chỉ cho 7 mẫu/chu kỳ ở 20 kHz.
+\item DAC 200 kupdate/s sát settling 4,5 µs.
+\item Pha Bode chưa hiệu chuẩn.
+\item CH2 DC có phần suy ra, không đo trực tiếp.
+\item Calibration Flash chưa có version/CRC.
+\item XOR yếu hơn CRC chuẩn.
+\end{itemize}
+
+\section{Nếu có thêm thời gian sẽ làm gì trước?}
+
+Ưu tiên hiệu chuẩn loopback gain/phase theo tần số, xác nhận bằng máy phát và oscilloscope chuẩn; sau đó tăng tốc nền tảng ADC/MCU/USB, thêm anti-alias filter và CRC mạnh.
+
+\clearpage
+
+\clearpage
+\part{PHẦN ÔN NHANH TRƯỚC KHI VÀO BẢO VỆ}
+\setcounter{section}{0}
+
+Hãy nhớ 12 ý sau:
+
+\begin{enumerate}
+\item Đề tài là bộ phân tích DUT, không chỉ là oscilloscope.
+\item DAC phát; ADC đồng thời đo Vin/Vout; STM32 điều phối; app phân tích.
+\item DUT mục tiêu gain 3 = 9,54 dB.
+\item Gain DUT khác DAC X1/X2 và khác range CH2.
+\item Gain tính bằng tỷ số RMS AC.
+\item Pha desktop tính bằng sine fit.
+\item Bode là gain và pha theo tần số log.
+\item Nyquist đúng chưa có nghĩa waveform/phase chính xác.
+\item 140 kSPS tại 20 kHz chỉ có 7 mẫu/chu kỳ.
+\item Streaming dùng timer–SPI–DMA, ring 2048, chunk 512 và sequence.
+\item PASS/FAIL/WARNING đánh giá cả spec lẫn độ tin cậy.
+\item Nguyên mẫu đã chạy end-to-end nhưng pha cao tần và độ chính xác tuyệt đối vẫn cần hiệu chuẩn.
+\end{enumerate}
+
+\section{Kịch bản trình bày 2 phút}
+
+“Thiết bị tạo tín hiệu bằng MCP4822, đưa qua DUT rồi đo đồng thời Vin và Vout bằng ADS7861. STM32F103 sử dụng timer và DMA để tách timing lấy mẫu khỏi việc truyền USB. Dữ liệu hai kênh được đóng frame có checksum và sequence, sau đó ứng dụng desktop khôi phục điện áp theo calibration/range. Phần mềm dùng RMS AC để tính gain nhằm loại offset, dùng sine fit để tính biên độ và pha, đồng thời đánh giá số mẫu mỗi chu kỳ, sai số bỏ lỡ đỉnh, ZOH và settling DAC. DUT thử nghiệm có gain lý thuyết 3 lần, tương đương 9,54 dB; kết quả Bode gain đo khoảng 9,26 đến 9,47 dB. Hệ thống đã hoạt động end-to-end, nhưng tại 20 kHz tốc độ 140 kSPS chỉ còn 7 mẫu mỗi chu kỳ và pha chưa hiệu chuẩn, nên đây là nguyên mẫu chức năng chứ chưa phải thiết bị đo chuẩn.”
+
+\end{document}
