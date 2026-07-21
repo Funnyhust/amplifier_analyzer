@@ -355,7 +355,7 @@ nguồn cấp và tín hiệu điều khiển trong thiết kế phần cứng.
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.72\textwidth]{images/schematic/offset_ldo.png}
+\includegraphics[width=0.50\textwidth]{images/schematic/offset_ldo.png}
 \caption{Sơ đồ nguyên lý offset $1{,}65\unit{V}$ và LDO $5\unit{V}$ xuống $3{,}3\unit{V}$}
 \label{fig:sch_offset_ldo}
 \end{figure}
@@ -400,16 +400,25 @@ STM32 sử dụng nguồn $3{,}3\unit{V}$, thạch anh ngoài $8\unit{MHz}$ và 
 \centering
 \caption{Phân bổ các chân điều khiển chính}
 \label{tab:pinmap}
+\renewcommand{\arraystretch}{1.42}
 \begin{tabularx}{\textwidth}{|p{3cm}|p{3.8cm}|X|}
 \hline
 \tableheadcolor\textbf{Khối} & \textbf{Chân STM32} & \textbf{Chức năng} \\ \hline
-MCP4822 & PA3, PA4, PA5, PA7 & LDAC, CS, SPI1 SCK, SPI1 MOSI \\ \hline
-ADS7861 & PB13, PB14 & CLOCK GPIO bring-up, Serial Data A \\ \hline
-ADS7861 & PA8, PB10, PB12 & RD/CONVST, BUSY, CS \\ \hline
-ADS7861 & PB0, PB1, PB11 & M0, A0, M1 \\ \hline
-Range & PA15, PB3, PB4 & Relay $0{,}3\unit{V}$, $3{,}3\unit{V}$, $10\unit{V}$ \\ \hline
-USB FS & PA11, PA12 & D-, D+ \\ \hline
-Debug & PA13, PA14 & SWDIO, SWCLK \\ \hline
+MCP4822 & PA3 & LDAC, chốt đồng thời dữ liệu đầu ra DAC \\ \hline
+MCP4822 & PA4 & CS/NSS1, chọn DAC khi truyền SPI1 \\ \hline
+MCP4822 & PA5, PA7 & SPI1 SCK và MOSI \\ \hline
+ADS7861 & PA8 & RD/CONVST, khởi tạo chuyển đổi và đọc dữ liệu \\ \hline
+ADS7861 & PB10 & BUSY, báo trạng thái chuyển đổi ADC \\ \hline
+ADS7861 & PB12 & CS2, chọn ADC \\ \hline
+ADS7861 & PB13, PB14 & CLOCK/SPI2 SCK và Serial Data A/SPI2 MISO \\ \hline
+ADS7861 & PB0, PB1, PB11 & M0, A0 và M1, cấu hình mode và cặp kênh \\ \hline
+Range $0{,}3\unit{V}$ & PA15 & Điều khiển relay dải $0{,}3\unit{V}$ \\ \hline
+Range $3{,}3\unit{V}$ & PB3 & Điều khiển relay dải $3{,}3\unit{V}$ \\ \hline
+Range $10\unit{V}$ & PB4 & Điều khiển relay dải $10\unit{V}$ \\ \hline
+USB FS & PA11 & USB D- \\ \hline
+USB FS & PA12 & USB D+ \\ \hline
+Debug SWD & PA13, PA14 & SWDIO và SWCLK để nạp, debug firmware \\ \hline
+Clock HSE & PD0, PD1 & OSC\_IN và OSC\_OUT nối thạch anh $8\unit{MHz}$ \\ \hline
 \end{tabularx}
 \end{table}
 
